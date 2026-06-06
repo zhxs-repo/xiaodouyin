@@ -9,6 +9,7 @@ class PlayHistoryPage extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
     return Scaffold(
       appBar: AppBar(
         title: const Text('播放历史'),
@@ -24,8 +25,8 @@ class PlayHistoryPage extends StatelessWidget {
         builder: (context, resume, _) {
           final history = resume.history;
           if (history.isEmpty) {
-            return const Center(
-              child: Text('暂无播放记录', style: TextStyle(color: Colors.white54, fontSize: 16)),
+            return Center(
+              child: Text('暂无播放记录', style: TextStyle(color: colorScheme.onSurfaceVariant, fontSize: 16)),
             );
           }
           // 按时间倒序排列
@@ -46,6 +47,7 @@ class PlayHistoryPage extends StatelessWidget {
   }
 
   Widget _buildHistoryItem(BuildContext context, String path, PlayHistoryRecord record, ResumeProvider resume) {
+    final colorScheme = Theme.of(context).colorScheme;
     final fileName = path.split('/').last.split(r'\').last;
     final progress = record.duration.inMilliseconds > 0
         ? record.position.inMilliseconds / record.duration.inMilliseconds
@@ -58,29 +60,29 @@ class PlayHistoryPage extends StatelessWidget {
       background: Container(
         alignment: Alignment.centerRight,
         padding: const EdgeInsets.only(right: 16),
-        color: Colors.red,
-        child: const Icon(Icons.delete, color: Colors.white),
+        color: colorScheme.error,
+        child: Icon(Icons.delete, color: colorScheme.onError),
       ),
       onDismissed: (_) => resume.clearRecord(path),
       child: ListTile(
-        title: Text(fileName, style: const TextStyle(color: Colors.white, fontSize: 14), maxLines: 1, overflow: TextOverflow.ellipsis),
+        title: Text(fileName, style: TextStyle(color: colorScheme.onSurface, fontSize: 14), maxLines: 1, overflow: TextOverflow.ellipsis),
         subtitle: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             const SizedBox(height: 4),
-            LinearProgressIndicator(value: progress, backgroundColor: Colors.white12, color: Colors.red),
+            LinearProgressIndicator(value: progress, backgroundColor: colorScheme.surfaceContainerHighest, color: colorScheme.primary),
             const SizedBox(height: 4),
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                Text('${_formatDuration(record.position)} / ${_formatDuration(record.duration)}', style: const TextStyle(color: Colors.white54, fontSize: 11)),
-                Text(timeStr, style: const TextStyle(color: Colors.white38, fontSize: 11)),
+                Text('${_formatDuration(record.position)} / ${_formatDuration(record.duration)}', style: TextStyle(color: colorScheme.onSurfaceVariant, fontSize: 11)),
+                Text(timeStr, style: TextStyle(color: colorScheme.onSurfaceVariant, fontSize: 11)),
               ],
             ),
           ],
         ),
         trailing: IconButton(
-          icon: const Icon(Icons.delete_outline, color: Colors.white38, size: 18),
+          icon: Icon(Icons.delete_outline, color: colorScheme.onSurfaceVariant, size: 18),
           onPressed: () async {
             await resume.clearRecord(path);
             if (context.mounted) ToastUtil.show(context, '已删除记录');
@@ -93,21 +95,24 @@ class PlayHistoryPage extends StatelessWidget {
   void _showClearAllConfirm(BuildContext context) {
     showDialog(
       context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('清空历史'),
-        content: const Text('确定清空所有播放记录吗？'),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('取消')),
-          TextButton(
-            onPressed: () async {
-              Navigator.pop(ctx);
-              await context.read<ResumeProvider>().clearAll();
-              if (context.mounted) ToastUtil.show(context, '已清空历史');
-            },
-            child: const Text('清空', style: TextStyle(color: Colors.red)),
-          ),
-        ],
-      ),
+      builder: (ctx) {
+        final colorScheme = Theme.of(ctx).colorScheme;
+        return AlertDialog(
+          title: const Text('清空历史'),
+          content: const Text('确定清空所有播放记录吗？'),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('取消')),
+            TextButton(
+              onPressed: () async {
+                Navigator.pop(ctx);
+                await context.read<ResumeProvider>().clearAll();
+                if (context.mounted) ToastUtil.show(context, '已清空历史');
+              },
+              child: Text('清空', style: TextStyle(color: colorScheme.error)),
+            ),
+          ],
+        );
+      },
     );
   }
 

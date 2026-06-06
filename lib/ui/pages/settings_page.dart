@@ -31,8 +31,31 @@ class SettingsPage extends StatefulWidget {
 class _SettingsPageState extends State<SettingsPage> {
   bool _isOperating = false;
 
+  // 主题模式选项
+  static const _themeModes = [
+    ('system', '跟随系统', Icons.brightness_auto_rounded),
+    ('dark', '深色', Icons.dark_mode_rounded),
+    ('light', '浅色', Icons.light_mode_rounded),
+  ];
+
+  // 循环模式选项
+  static const _playModes = [
+    (PlayMode.normal, '播完即停', Icons.stop_rounded),
+    (PlayMode.loop, '列表循环', Icons.loop_rounded),
+    (PlayMode.loopOne, '单视频循环', Icons.repeat_one_rounded),
+  ];
+
+  // 启动模式选项
+  static const _startupModes = [
+    ('none', '无'),
+    ('video', '视频'),
+    ('beauty', '美图'),
+    ('online', '在线'),
+  ];
+
   @override
   Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
     return Scaffold(
       appBar: AppBar(title: const Text('设置')),
       body: Consumer<ConfigProvider>(
@@ -41,53 +64,239 @@ class _SettingsPageState extends State<SettingsPage> {
           return Stack(
             children: [
               ListView(
-                padding: const EdgeInsets.all(16),
+                padding: const EdgeInsets.fromLTRB(16, 12, 16, 32),
                 children: [
-              _sectionTitle('播放设置'),
-              _buildSwitch('连播模式', config.playMode == PlayMode.normal, (v) => cp.updateField(playMode: v ? PlayMode.normal : PlayMode.loop)),
-              _buildSlider('缩放比例', config.scale, 0.5, 3.0, onPreview: (v) => cp.updateFieldMemoryOnly(scale: v), onConfirm: (v) => cp.updateField(scale: v)),
-              _buildSlider('旋转角度', config.rotation, 0, 270, onPreview: (v) => cp.updateFieldMemoryOnly(rotation: v), onConfirm: (v) => cp.updateField(rotation: v), divisions: 3),
-              _buildSlider('色彩饱和度', config.saturation, 0, 200, onPreview: (v) => cp.updateFieldMemoryOnly(saturation: v), onConfirm: (v) => cp.updateField(saturation: v)),
-              _sectionTitle('显示设置'),
-              _buildSlider('UI透明度', config.uiOpacity, 0, 1, onPreview: (v) => cp.updateFieldMemoryOnly(uiOpacity: v), onConfirm: (v) => cp.updateField(uiOpacity: v)),
-              _buildSlider('视频名透明度', config.nameOpacity, 0, 1, onPreview: (v) => cp.updateFieldMemoryOnly(nameOpacity: v), onConfirm: (v) => cp.updateField(nameOpacity: v)),
-              _buildSlider('字体大小', config.fontSize, 10, 30, onPreview: (v) => cp.updateFieldMemoryOnly(fontSize: v), onConfirm: (v) => cp.updateField(fontSize: v)),
-              _buildColorPicker('文字颜色', config.textColor, (color) => cp.updateField(textColor: color)),
-              _buildDropdown('文字特效', config.textEffect.name, ['solid', 'gradient', 'colorful'], (v) => cp.updateField(textEffect: TextEffectType.values.firstWhere((e) => e.name == v))),
-              _sectionTitle('功能开关'),
-              if (context.read<DeviceProvider>().canVibrate)
-                _buildSwitch('震动反馈', config.vibrationEnabled, (v) { cp.updateField(vibrationEnabled: v); context.read<DeviceProvider>().setVibrationEnabled(v); }),
-              _buildSwitch('滑动动画', config.swipeAnimationEnabled, (v) => cp.updateField(swipeAnimationEnabled: v)),
-              _buildSwitch('缩略图载入', config.thumbnailLoadEnabled, (v) => cp.updateField(thumbnailLoadEnabled: v)),
-              _buildSwitch('全局续播', config.globalResumeEnabled, (v) { cp.updateField(globalResumeEnabled: v); context.read<ResumeProvider>().setEnabled(v); }),
-              // 修仙开关
-              Consumer<CultivationProvider>(
-                builder: (context, cultivation, _) => SwitchListTile(
-                  title: const Text('修仙模式'),
-                  subtitle: cultivation.enabled ? Text('${cultivation.realmName} | 灵力:${cultivation.currentExp}', style: const TextStyle(color: Colors.amber, fontSize: 11)) : null,
-                  value: cultivation.enabled,
-                  onChanged: (v) => cultivation.setEnabled(v),
-                ),
+                  // ==================== 主题 ====================
+                  _buildSection(context, '主题', Icons.palette_rounded, [
+                    _buildSegmented(
+                      label: '主题模式',
+                      value: config.themeMode,
+                      options: _themeModes,
+                      onChanged: (v) => cp.updateField(themeMode: v),
+                    ),
+                  ]),
+
+                  // ==================== 播放 ====================
+                  _buildSection(context, '播放', Icons.play_circle_outline_rounded, [
+                    _buildSegmented(
+                      label: '循环模式',
+                      value: config.playMode.name,
+                      options: _playModes.map((e) => (e.$1.name, e.$2, e.$3)).toList(),
+                      onChanged: (v) => cp.updateField(
+                        playMode: PlayMode.values.firstWhere((e) => e.name == v),
+                      ),
+                    ),
+                    _buildSliderTile(
+                      label: '缩放比例',
+                      value: config.scale,
+                      min: 0.5, max: 3.0,
+                      valueText: config.scale.toStringAsFixed(2),
+                      onPreview: (v) => cp.updateFieldMemoryOnly(scale: v),
+                      onConfirm: (v) => cp.updateField(scale: v),
+                    ),
+                    _buildSliderTile(
+                      label: '旋转角度',
+                      value: config.rotation,
+                      min: 0, max: 270,
+                      divisions: 3,
+                      valueText: '${config.rotation.toInt()}°',
+                      onPreview: (v) => cp.updateFieldMemoryOnly(rotation: v),
+                      onConfirm: (v) => cp.updateField(rotation: v),
+                    ),
+                    _buildSliderTile(
+                      label: '色彩饱和度',
+                      value: config.saturation,
+                      min: 0, max: 200,
+                      valueText: '${config.saturation.toInt()}%',
+                      onPreview: (v) => cp.updateFieldMemoryOnly(saturation: v),
+                      onConfirm: (v) => cp.updateField(saturation: v),
+                    ),
+                  ]),
+
+                  // ==================== 显示 ====================
+                  _buildSection(context, '显示', Icons.visibility_rounded, [
+                    _buildSliderTile(
+                      label: 'UI 透明度',
+                      value: config.uiOpacity,
+                      min: 0, max: 1,
+                      valueText: '${(config.uiOpacity * 100).toInt()}%',
+                      onPreview: (v) => cp.updateFieldMemoryOnly(uiOpacity: v),
+                      onConfirm: (v) => cp.updateField(uiOpacity: v),
+                    ),
+                    _buildSliderTile(
+                      label: '视频名透明度',
+                      value: config.nameOpacity,
+                      min: 0, max: 1,
+                      valueText: '${(config.nameOpacity * 100).toInt()}%',
+                      onPreview: (v) => cp.updateFieldMemoryOnly(nameOpacity: v),
+                      onConfirm: (v) => cp.updateField(nameOpacity: v),
+                    ),
+                    _buildSliderTile(
+                      label: '字体大小',
+                      value: config.fontSize,
+                      min: 10, max: 30,
+                      divisions: 20,
+                      valueText: '${config.fontSize.toInt()}',
+                      onPreview: (v) => cp.updateFieldMemoryOnly(fontSize: v),
+                      onConfirm: (v) => cp.updateField(fontSize: v),
+                    ),
+                    _buildColorPickerTile(
+                      label: '文字颜色',
+                      currentColor: config.textColor,
+                      onChanged: (c) => cp.updateField(textColor: c),
+                    ),
+                    _buildSegmented(
+                      label: '文字特效',
+                      value: config.textEffect.name,
+                      options: const [
+                        ('solid', '实色', Icons.format_color_fill_rounded),
+                        ('gradient', '渐变', Icons.gradient_rounded),
+                        ('colorful', '彩色', Icons.palette_rounded),
+                      ],
+                      onChanged: (v) => cp.updateField(
+                        textEffect: TextEffectType.values.firstWhere((e) => e.name == v),
+                      ),
+                    ),
+                  ]),
+
+                  // ==================== 功能开关 ====================
+                  _buildSection(context, '功能开关', Icons.toggle_on_rounded, [
+                    if (context.read<DeviceProvider>().canVibrate)
+                      _buildSwitchTile(
+                        label: '震动反馈',
+                        value: config.vibrationEnabled,
+                        onChanged: (v) {
+                          cp.updateField(vibrationEnabled: v);
+                          context.read<DeviceProvider>().setVibrationEnabled(v);
+                        },
+                      ),
+                    _buildSwitchTile(
+                      label: '滑动动画',
+                      value: config.swipeAnimationEnabled,
+                      onChanged: (v) => cp.updateField(swipeAnimationEnabled: v),
+                    ),
+                    _buildSwitchTile(
+                      label: '缩略图载入',
+                      value: config.thumbnailLoadEnabled,
+                      onChanged: (v) => cp.updateField(thumbnailLoadEnabled: v),
+                    ),
+                    _buildSwitchTile(
+                      label: '全局续播',
+                      value: config.globalResumeEnabled,
+                      onChanged: (v) {
+                        cp.updateField(globalResumeEnabled: v);
+                        context.read<ResumeProvider>().setEnabled(v);
+                      },
+                    ),
+                    Consumer<CultivationProvider>(
+                      builder: (context, cultivation, _) => _buildSwitchTile(
+                        label: '修仙模式',
+                        subtitle: cultivation.enabled
+                            ? '${cultivation.realmName} | 灵力:${cultivation.currentExp}'
+                            : null,
+                        subtitleColor: Colors.amber,
+                        value: cultivation.enabled,
+                        onChanged: (v) => cultivation.setEnabled(v),
+                      ),
+                    ),
+                  ]),
+
+                  // ==================== 数据管理 ====================
+                  _buildSection(context, '数据管理', Icons.folder_rounded, [
+                    _buildNavTile(
+                      label: '播放历史',
+                      icon: Icons.history_rounded,
+                      onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const PlayHistoryPage())),
+                    ),
+                    _buildNavTile(
+                      label: '操作教程',
+                      icon: Icons.help_outline_rounded,
+                      onTap: () => showTutorialDialog(context),
+                    ),
+                    _buildNavTile(
+                      label: '导出数据',
+                      icon: Icons.upload_rounded,
+                      enabled: !_isOperating,
+                      onTap: () => _exportData(context),
+                    ),
+                    _buildNavTile(
+                      label: '导入数据',
+                      icon: Icons.download_rounded,
+                      enabled: !_isOperating,
+                      onTap: () => _importData(context),
+                    ),
+                    _buildNavTile(
+                      label: '导入视频',
+                      icon: Icons.video_call_rounded,
+                      enabled: !_isOperating,
+                      onTap: () => _importVideo(context),
+                    ),
+                  ]),
+
+                  // ==================== 自定义目录 ====================
+                  _buildSection(context, '自定义目录', Icons.folder_special_rounded, [
+                    _buildDirPicker(
+                      context,
+                      label: '视频目录',
+                      currentPath: config.customVideoDir,
+                      onSelected: (path) => cp.updateField(customVideoDir: path),
+                      onReset: () => cp.updateField(customVideoDir: ''),
+                    ),
+                    _buildDirPicker(
+                      context,
+                      label: '图片目录',
+                      currentPath: config.customImageDir,
+                      onSelected: (path) => cp.updateField(customImageDir: path),
+                      onReset: () => cp.updateField(customImageDir: ''),
+                    ),
+                  ]),
+
+                  // ==================== 启动模式 ====================
+                  _buildSection(context, '启动模式', Icons.rocket_launch_rounded, [
+                    _buildSegmented(
+                      label: '默认启动',
+                      value: config.defaultStartupMode,
+                      options: _startupModes.map((e) => (e.$1, e.$2, Icons.app_shortcut_rounded)).toList(),
+                      onChanged: (v) => cp.updateField(defaultStartupMode: v),
+                    ),
+                  ]),
+
+                  // ==================== 密码 ====================
+                  _buildSection(context, '密码设置', Icons.lock_rounded, [
+                    _buildPasswordTile(
+                      label: '视频模式密码',
+                      currentValue: config.videoModePassword,
+                      onChanged: (v) => cp.updateField(videoModePassword: v),
+                    ),
+                    _buildPasswordTile(
+                      label: '美图模式密码',
+                      currentValue: config.beautyModePassword,
+                      onChanged: (v) => cp.updateField(beautyModePassword: v),
+                    ),
+                    _buildPasswordTile(
+                      label: '在线模式密码',
+                      currentValue: config.onlineModePassword,
+                      onChanged: (v) => cp.updateField(onlineModePassword: v),
+                    ),
+                  ]),
+
+                  const SizedBox(height: 16),
+                  Center(
+                    child: Text(
+                      '小抖音 · v1.0.0',
+                      style: TextStyle(
+                        color: colorScheme.onSurfaceVariant,
+                        fontSize: 12,
+                      ),
+                    ),
+                  ),
+                ],
               ),
-              _sectionTitle('数据管理'),
-              ListTile(title: const Text('播放历史'), trailing: const Icon(Icons.history), onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const PlayHistoryPage()))),
-              ListTile(title: const Text('操作教程'), trailing: const Icon(Icons.help_outline), onTap: () => showTutorialDialog(context)),
-              ListTile(title: const Text('导出数据'), trailing: const Icon(Icons.upload), onTap: _isOperating ? null : () => _exportData(context)),
-              ListTile(title: const Text('导入数据'), trailing: const Icon(Icons.download), onTap: _isOperating ? null : () => _importData(context)),
-              ListTile(title: const Text('导入视频'), trailing: const Icon(Icons.video_call), onTap: _isOperating ? null : () => _importVideo(context)),
-              _sectionTitle('自定义目录'),
-              _buildDirPicker(context, '视频目录', config.customVideoDir, (path) => cp.updateField(customVideoDir: path), () => cp.updateField(customVideoDir: '')),
-              _buildDirPicker(context, '图片目录', config.customImageDir, (path) => cp.updateField(customImageDir: path), () => cp.updateField(customImageDir: '')),
-              _sectionTitle('默认启动模式'),
-              _buildDropdown('启动模式', config.defaultStartupMode, ['none', 'video', 'beauty', 'online'], (v) => cp.updateField(defaultStartupMode: v)),
-              _sectionTitle('密码设置'),
-              _buildPasswordField('视频模式密码', config.videoModePassword, (v) => cp.updateField(videoModePassword: v)),
-              _buildPasswordField('美图模式密码', config.beautyModePassword, (v) => cp.updateField(beautyModePassword: v)),
-              _buildPasswordField('在线模式密码', config.onlineModePassword, (v) => cp.updateField(onlineModePassword: v)),
-            ],
-          ),
               if (_isOperating)
-                const Center(child: CircularProgressIndicator()),
+                ColoredBox(
+                  color: colorScheme.scrim.withValues(alpha: 0.32),
+                  child: const Center(child: CircularProgressIndicator()),
+                ),
             ],
           );
         },
@@ -95,43 +304,213 @@ class _SettingsPageState extends State<SettingsPage> {
     );
   }
 
-  Widget _sectionTitle(String title) => Padding(padding: const EdgeInsets.only(top: 16, bottom: 8), child: Text(title, style: const TextStyle(color: Colors.white70, fontSize: 14, fontWeight: FontWeight.bold)));
+  // ==================== M3 通用组件 ====================
 
-  Widget _buildSwitch(String label, bool value, ValueChanged<bool> onChanged) => SwitchListTile(title: Text(label), value: value, onChanged: onChanged);
-
-  Widget _buildSlider(String label, double value, double min, double max, {required ValueChanged<double> onPreview, required ValueChanged<double> onConfirm, int? divisions}) => ListTile(
-    title: Text(label),
-    subtitle: Slider(value: value, min: min, max: max, divisions: divisions ?? (max - min > 10 ? null : (max - min).toInt()), onChanged: onPreview, onChangeEnd: onConfirm),
-    trailing: Text(value.toStringAsFixed(2), style: const TextStyle(color: Colors.white54)),
-  );
-
-  Widget _buildDropdown(String label, String value, List<String> items, ValueChanged<String> onChanged) => ListTile(
-    title: Text(label),
-    trailing: DropdownButton<String>(value: value, items: items.map((i) => DropdownMenuItem(value: i, child: Text(i))).toList(), onChanged: (v) { if (v != null) onChanged(v); }),
-  );
-
-  Widget _buildColorPicker(String label, String currentColor, ValueChanged<String> onChanged) {
-    final hex = currentColor.replaceAll('#', '');
-    final displayColor = hex.length == 6 ? Color(int.parse('FF$hex', radix: 16)) : Colors.white;
-    return ListTile(
-      title: Text(label),
-      trailing: GestureDetector(
-        onTap: () async {
-          final result = await showDialog<String>(context: context, builder: (_) => ColorPickerDialog(initialColor: currentColor));
-          if (result != null) onChanged(result);
-        },
-        child: Container(width: 32, height: 32, decoration: BoxDecoration(color: displayColor, shape: BoxShape.circle, border: Border.all(color: Colors.white54))),
+  /// 分组卡片容器
+  Widget _buildSection(
+    BuildContext context,
+    String title,
+    IconData icon,
+    List<Widget> children,
+  ) {
+    final colorScheme = Theme.of(context).colorScheme;
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 16),
+      child: Card(
+        margin: EdgeInsets.zero,
+        color: colorScheme.surfaceContainer,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 12, 16, 4),
+              child: Row(
+                children: [
+                  Icon(icon, size: 18, color: colorScheme.primary),
+                  const SizedBox(width: 8),
+                  Text(
+                    title,
+                    style: TextStyle(
+                      color: colorScheme.onSurface,
+                      fontSize: 14,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            ...children,
+            const SizedBox(height: 4),
+          ],
+        ),
       ),
     );
   }
 
-  Widget _buildPasswordField(String label, String currentValue, ValueChanged<String> onChanged) {
+  /// 三段式按钮组 (跟随系统/深色/浅色 等)
+  Widget _buildSegmented({
+    required String label,
+    required String value,
+    required List<(String, String, IconData)> options,
+    required ValueChanged<String> onChanged,
+  }) {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            label,
+            style: const TextStyle(fontSize: 13),
+          ),
+          const SizedBox(height: 8),
+          SegmentedButton<String>(
+            showSelectedIcon: false,
+            segments: options
+                .map((o) => ButtonSegment<String>(
+                      value: o.$1,
+                      icon: Icon(o.$3, size: 16),
+                      label: Text(o.$2),
+                    ))
+                .toList(),
+            selected: {value},
+            onSelectionChanged: (s) => onChanged(s.first),
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// Switch 列表项
+  Widget _buildSwitchTile({
+    required String label,
+    String? subtitle,
+    Color? subtitleColor,
+    required bool value,
+    required ValueChanged<bool> onChanged,
+  }) {
+    return SwitchListTile(
+      title: Text(label),
+      subtitle: subtitle != null
+          ? Text(subtitle, style: TextStyle(color: subtitleColor, fontSize: 11))
+          : null,
+      value: value,
+      onChanged: onChanged,
+      contentPadding: const EdgeInsets.symmetric(horizontal: 16),
+    );
+  }
+
+  /// Slider 列表项
+  Widget _buildSliderTile({
+    required String label,
+    required double value,
+    required double min,
+    required double max,
+    int? divisions,
+    required String valueText,
+    required ValueChanged<double> onPreview,
+    required ValueChanged<double> onConfirm,
+  }) {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 4, 16, 0),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Text(label, style: const TextStyle(fontSize: 13)),
+              const Spacer(),
+              Text(
+                valueText,
+                style: TextStyle(
+                  color: Theme.of(context).colorScheme.onSurfaceVariant,
+                  fontSize: 12,
+                  fontFeatures: const [FontFeature.tabularFigures()],
+                ),
+              ),
+            ],
+          ),
+          Slider(
+            value: value,
+            min: min,
+            max: max,
+            divisions: divisions,
+            onChanged: onPreview,
+            onChangeEnd: onConfirm,
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// 颜色选择列表项
+  Widget _buildColorPickerTile({
+    required String label,
+    required String currentColor,
+    required ValueChanged<String> onChanged,
+  }) {
+    final hex = currentColor.replaceAll('#', '');
+    final defaultColor = Theme.of(context).colorScheme.onSurface;
+    final displayColor = hex.length == 6 ? Color(int.parse('FF$hex', radix: 16)) : defaultColor;
+    return ListTile(
+      title: Text(label),
+      trailing: GestureDetector(
+        onTap: () async {
+          final result = await showDialog<String>(
+            context: context,
+            builder: (_) => ColorPickerDialog(initialColor: currentColor),
+          );
+          if (result != null) onChanged(result);
+        },
+        child: Container(
+          width: 32, height: 32,
+          decoration: BoxDecoration(
+            color: displayColor,
+            shape: BoxShape.circle,
+            border: Border.all(
+              color: Theme.of(context).colorScheme.outlineVariant,
+              width: 1,
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  /// 导航列表项
+  Widget _buildNavTile({
+    required String label,
+    required IconData icon,
+    required VoidCallback onTap,
+    bool enabled = true,
+  }) {
+    return ListTile(
+      leading: Icon(icon, size: 20),
+      title: Text(label),
+      trailing: const Icon(Icons.chevron_right_rounded),
+      onTap: enabled ? onTap : null,
+    );
+  }
+
+  /// 密码列表项
+  Widget _buildPasswordTile({
+    required String label,
+    required String currentValue,
+    required ValueChanged<String> onChanged,
+  }) {
     return ListTile(
       title: Text(label),
       trailing: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Text(currentValue, style: const TextStyle(color: Colors.white54, fontSize: 14, letterSpacing: 4)),
+          Text(
+            '*' * currentValue.length,
+            style: TextStyle(
+              color: Theme.of(context).colorScheme.onSurfaceVariant,
+              fontSize: 14,
+              letterSpacing: 4,
+            ),
+          ),
           IconButton(
             icon: const Icon(Icons.edit, size: 18),
             onPressed: () {
@@ -170,24 +549,47 @@ class _SettingsPageState extends State<SettingsPage> {
     );
   }
 
-  Widget _buildDirPicker(BuildContext context, String label, String? currentPath, ValueChanged<String> onSelected, VoidCallback onReset) {
-    final displayPath = (currentPath != null && currentPath.isNotEmpty) ? currentPath : '默认';
+  /// 目录选择列表项
+  Widget _buildDirPicker(
+    BuildContext context, {
+    required String label,
+    required String? currentPath,
+    required ValueChanged<String> onSelected,
+    required VoidCallback onReset,
+  }) {
+    final displayPath = (currentPath != null && currentPath.isNotEmpty) ? currentPath : '默认目录';
     return ListTile(
       title: Text(label),
-      subtitle: Text(displayPath, style: const TextStyle(color: Colors.white54, fontSize: 12), maxLines: 1, overflow: TextOverflow.ellipsis),
+      subtitle: Text(
+        displayPath,
+        style: TextStyle(
+          color: Theme.of(context).colorScheme.onSurfaceVariant,
+          fontSize: 12,
+        ),
+        maxLines: 1,
+        overflow: TextOverflow.ellipsis,
+      ),
       trailing: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          IconButton(icon: const Icon(Icons.folder_open), onPressed: () async {
-            final dir = await FilePicker.platform.getDirectoryPath(dialogTitle: '选择$label');
-            if (dir != null) onSelected(dir);
-          }),
+          IconButton(
+            icon: const Icon(Icons.folder_open_rounded),
+            onPressed: () async {
+              final dir = await FilePicker.platform.getDirectoryPath(dialogTitle: '选择$label');
+              if (dir != null) onSelected(dir);
+            },
+          ),
           if (currentPath != null && currentPath.isNotEmpty)
-            IconButton(icon: const Icon(Icons.clear, size: 18), onPressed: onReset),
+            IconButton(
+              icon: const Icon(Icons.clear_rounded, size: 18),
+              onPressed: onReset,
+            ),
         ],
       ),
     );
   }
+
+  // ==================== 数据导入导出 ====================
 
   Future<void> _exportData(BuildContext context) async {
     setState(() => _isOperating = true);
@@ -237,7 +639,6 @@ class _SettingsPageState extends State<SettingsPage> {
           if (!context.mounted) return;
         }
 
-        // 恢复笔记本数据
         if (data.containsKey('notebook')) {
           final notebook = (data['notebook'] as List).cast<String>();
           final storage = await StorageService.getInstance();
@@ -269,7 +670,6 @@ class _SettingsPageState extends State<SettingsPage> {
         }
         if (context.mounted) {
           ToastUtil.show(context, '已导入 $successCount 个视频');
-          // 刷新视频列表
           final videos = await videoRepo.loadVideos();
           if (videos.isNotEmpty && context.mounted) {
             context.read<VideoPlayerProvider>().setVideoList(videos);

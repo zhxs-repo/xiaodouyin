@@ -10,9 +10,9 @@ class DanmakuOverlay extends StatelessWidget {
   Widget build(BuildContext context) {
     return Consumer<DanmakuProvider>(
       builder: (context, dp, _) {
-        if (!dp.isEnabled) return const SizedBox();
+        if (!dp.isEnabled) return const SizedBox.shrink();
         return CustomPaint(
-          painter: _DanmakuPainter(dp.activeBullets),
+          painter: _DanmakuPainter(dp.activeBullets, dp.config),
           size: Size.infinite,
         );
       },
@@ -22,53 +22,73 @@ class DanmakuOverlay extends StatelessWidget {
 
 class _DanmakuPainter extends CustomPainter {
   final List<DanmakuItem> bullets;
-  static const int _maxCacheSize = 100;
+  final DanmakuConfig config;
+  static const int _maxCacheSize = 200;
   static final Map<String, TextPainter> _textPainterCache = {};
 
-  _DanmakuPainter(this.bullets);
+  _DanmakuPainter(this.bullets, this.config);
 
   @override
   void paint(Canvas canvas, Size size) {
+    if (bullets.isEmpty) return;
     final now = DateTime.now();
-    final rowHeight = size.height / BulletConstants.rows;
 
     for (final bullet in bullets) {
       final elapsed = now.difference(bullet.startTime).inMilliseconds / 1000.0;
       final progress = elapsed / BulletConstants.speed;
       if (progress < 0 || progress > 1) continue;
 
-      final x = size.width * (1 - progress);
-      final y = bullet.row * rowHeight + rowHeight / 2;
+      final rowHeight = size.height / config.rows;
+      double x, y;
+      switch (bullet.position) {
+        case DanmakuPosition.scroll:
+          x = size.width * (1 - progress);
+          y = bullet.row * rowHeight + rowHeight / 2;
+          break;
+        case DanmakuPosition.top:
+          x = (size.width - _measureWidth(bullet.text, bullet)) / 2;
+          y = bullet.row * rowHeight + rowHeight / 2;
+          break;
+        case DanmakuPosition.bottom:
+          x = (size.width - _measureWidth(bullet.text, bullet)) / 2;
+          y = size.height - (bullet.row + 1) * rowHeight + rowHeight / 2;
+          break;
+      }
 
-      final textPainter = _getOrCreateTextPainter(bullet.text);
+      final textPainter = _getOrCreateTextPainter(bullet);
       textPainter.paint(canvas, Offset(x, y - textPainter.height / 2));
     }
   }
 
-  TextPainter _getOrCreateTextPainter(String text) {
-    // 清理超限缓存
+  double _measureWidth(String text, DanmakuItem bullet) {
+    final tp = _getOrCreateTextPainter(bullet);
+    return tp.width;
+  }
+
+  TextPainter _getOrCreateTextPainter(DanmakuItem bullet) {
+    final key = '${bullet.text}|${bullet.fontSize.toInt()}|${bullet.colorValue}';
     while (_textPainterCache.length > _maxCacheSize) {
       _textPainterCache.remove(_textPainterCache.keys.first);
     }
-    if (_textPainterCache.containsKey(text)) {
-      return _textPainterCache[text]!;
-    }
+    final cached = _textPainterCache[key];
+    if (cached != null) return cached;
     final textSpan = TextSpan(
-      text: text,
+      text: bullet.text,
       style: TextStyle(
-        color: Colors.white,
-        fontSize: BulletConstants.fontSize * 0.5,
-        shadows: const [Shadow(blurRadius: 2, color: Colors.black87)],
+        color: Color(bullet.colorValue).withValues(alpha: bullet.opacity),
+        fontSize: bullet.fontSize,
+        fontWeight: FontWeight.w500,
+        shadows: const [Shadow(blurRadius: 3, color: Colors.black87)],
       ),
     );
-    final textPainter = TextPainter(text: textSpan, textDirection: TextDirection.ltr);
-    textPainter.layout();
-    _textPainterCache[text] = textPainter;
-    return textPainter;
+    final tp = TextPainter(text: textSpan, textDirection: TextDirection.ltr);
+    tp.layout();
+    _textPainterCache[key] = tp;
+    return tp;
   }
 
   @override
   bool shouldRepaint(covariant _DanmakuPainter oldDelegate) {
-    return bullets != oldDelegate.bullets;
+    return bullets != oldDelegate.bullets || config != oldDelegate.config;
   }
 }

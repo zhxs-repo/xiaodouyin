@@ -25,6 +25,7 @@ class _BeautyPageState extends State<BeautyPage> {
 
   @override
   Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
     return Scaffold(
       appBar: AppBar(title: const Text('美图模式'), actions: [
         IconButton(icon: const Icon(Icons.refresh), onPressed: () => context.read<BeautyProvider>().loadImages()),
@@ -51,7 +52,7 @@ class _BeautyPageState extends State<BeautyPage> {
                 borderRadius: BorderRadius.circular(4),
                 child: Image.file(File(bp.images[index]), fit: BoxFit.cover,
                   cacheWidth: 200,
-                  errorBuilder: (_, _, _) => Container(color: Colors.grey.shade800, child: const Icon(Icons.broken_image, color: Colors.white24))),
+                  errorBuilder: (_, _, _) => Container(color: colorScheme.surfaceContainerHigh, child: Icon(Icons.broken_image, color: colorScheme.onSurfaceVariant))),
               ),
             ),
           );
@@ -61,10 +62,11 @@ class _BeautyPageState extends State<BeautyPage> {
   }
 
   void _showMusicControl() {
+    final colorScheme = Theme.of(context).colorScheme;
     showModalBottomSheet(context: context, builder: (context) => Container(
       padding: const EdgeInsets.all(20),
       child: Column(mainAxisSize: MainAxisSize.min, children: [
-        const Text('背景音乐', style: TextStyle(fontSize: 18, color: Colors.white)),
+        Text('背景音乐', style: TextStyle(fontSize: 18, color: colorScheme.onSurface)),
         const SizedBox(height: 16),
         Consumer<BeautyProvider>(builder: (_, bp, _) => Row(
           mainAxisAlignment: MainAxisAlignment.center,
@@ -77,14 +79,14 @@ class _BeautyPageState extends State<BeautyPage> {
         const SizedBox(height: 12),
         Consumer<BeautyProvider>(builder: (_, bp, _) => Row(
           children: [
-            const Icon(Icons.volume_down, color: Colors.white54, size: 20),
+            Icon(Icons.volume_down, color: colorScheme.onSurfaceVariant, size: 20),
             Expanded(
               child: Slider(
                 value: bp.musicVolume,
                 onChanged: (v) => bp.setMusicVolume(v),
               ),
             ),
-            const Icon(Icons.volume_up, color: Colors.white54, size: 20),
+            Icon(Icons.volume_up, color: colorScheme.onSurfaceVariant, size: 20),
           ],
         )),
       ]),
@@ -92,15 +94,16 @@ class _BeautyPageState extends State<BeautyPage> {
   }
 
   Widget _buildEmptyState(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
     return Center(
       child: Padding(
         padding: const EdgeInsets.all(32),
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            const Icon(Icons.photo_library, size: 64, color: Colors.white24),
+            Icon(Icons.photo_library, size: 64, color: colorScheme.onSurfaceVariant),
             const SizedBox(height: 16),
-            const Text('暂无图片', style: TextStyle(color: Colors.white54, fontSize: 18)),
+            Text('暂无图片', style: TextStyle(color: colorScheme.onSurfaceVariant, fontSize: 18)),
             const SizedBox(height: 32),
             SizedBox(
               width: double.infinity,

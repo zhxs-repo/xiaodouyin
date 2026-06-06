@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:media_kit/media_kit.dart';
 import 'package:permission_handler/permission_handler.dart';
+import 'package:window_manager/window_manager.dart';
 import 'core/utils/platform_utils.dart';
 import 'data/services/storage_service.dart';
 import 'app.dart';
@@ -8,6 +9,9 @@ import 'app.dart';
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   MediaKit.ensureInitialized();
+  if (PlatformUtils.isDesktop) {
+    await windowManager.ensureInitialized();
+  }
   await _requestPermissions();
   // 预初始化StorageService
   final storage = await StorageService.getInstance();

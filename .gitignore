@@ -120,6 +120,7 @@ app.*.symbols
 
 # Other
 docs/
+opencode.json
 
 # IDE
 .idea/

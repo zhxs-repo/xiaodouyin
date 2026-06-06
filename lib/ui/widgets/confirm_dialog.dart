@@ -9,12 +9,13 @@ class ConfirmDialog extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
     return AlertDialog(
-      title: Text(title, style: const TextStyle(color: Colors.white)),
-      content: Text(message, style: const TextStyle(color: Colors.white70)),
+      title: Text(title),
+      content: Text(message, style: TextStyle(color: colorScheme.onSurfaceVariant)),
       actions: [
         TextButton(onPressed: () => Navigator.pop(context), child: const Text('取消')),
-        TextButton(onPressed: () { Navigator.pop(context); onConfirm(); }, child: const Text('确认', style: TextStyle(color: Colors.red))),
+        TextButton(onPressed: () { Navigator.pop(context); onConfirm(); }, child: Text('确认', style: TextStyle(color: colorScheme.error))),
       ],
     );
   }

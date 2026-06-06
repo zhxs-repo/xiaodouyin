@@ -15,6 +15,7 @@ class DeviceProvider extends ChangeNotifier {
   bool get canVibrate => PlatformUtils.isMobile;
 
   Future<void> initBattery() async {
+    if (PlatformUtils.isDesktop) return;
     _batteryLevel = await _battery.batteryLevel;
     _batterySubscription = _battery.onBatteryStateChanged.listen((_) async {
       _batteryLevel = await _battery.batteryLevel;

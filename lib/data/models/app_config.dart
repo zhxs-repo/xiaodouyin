@@ -1,6 +1,6 @@
 import 'package:flutter/foundation.dart';
 
-enum PlayMode { normal, loop }
+enum PlayMode { normal, loop, loopOne }
 
 enum TextEffectType { solid, gradient, colorful }
 
@@ -26,6 +26,8 @@ class AppConfig {
   final String videoModePassword;
   final String beautyModePassword;
   final String onlineModePassword;
+  // 主题模式: 'system' / 'dark' / 'light'
+  final String themeMode;
 
   const AppConfig({
     this.playMode = PlayMode.normal,
@@ -48,6 +50,7 @@ class AppConfig {
     this.videoModePassword = '99',
     this.beautyModePassword = '88',
     this.onlineModePassword = '77',
+    this.themeMode = 'system',
   });
 
   AppConfig copyWith({
@@ -71,6 +74,7 @@ class AppConfig {
     String? videoModePassword,
     String? beautyModePassword,
     String? onlineModePassword,
+    String? themeMode,
   }) => AppConfig(
     playMode: playMode ?? this.playMode,
     scale: scale ?? this.scale,
@@ -92,6 +96,7 @@ class AppConfig {
     videoModePassword: videoModePassword ?? this.videoModePassword,
     beautyModePassword: beautyModePassword ?? this.beautyModePassword,
     onlineModePassword: onlineModePassword ?? this.onlineModePassword,
+    themeMode: themeMode ?? this.themeMode,
   );
 
   Map<String, dynamic> toJson() => {
@@ -115,6 +120,7 @@ class AppConfig {
     'videoModePassword': videoModePassword,
     'beautyModePassword': beautyModePassword,
     'onlineModePassword': onlineModePassword,
+    'themeMode': themeMode,
   };
 
   factory AppConfig.fromJson(Map<String, dynamic> json) => AppConfig(
@@ -140,5 +146,6 @@ class AppConfig {
     videoModePassword: json['videoModePassword'] as String? ?? '99',
     beautyModePassword: json['beautyModePassword'] as String? ?? '88',
     onlineModePassword: json['onlineModePassword'] as String? ?? '77',
+    themeMode: json['themeMode'] as String? ?? 'system',
   );
 }

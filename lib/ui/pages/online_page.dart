@@ -49,21 +49,22 @@ class _OnlinePageState extends State<OnlinePage> {
   }
 
   Widget _buildCategoryGrid(List<OnlineCategory> categories, CategoryType type, OnlineProvider op) {
+    final colorScheme = Theme.of(context).colorScheme;
     if (op.isLoading && categories.isEmpty) {
-      return const Center(child: CircularProgressIndicator(color: Colors.white));
+      return const Center(child: CircularProgressIndicator());
     }
     if (op.error != null && categories.isEmpty) {
       return Center(child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          Text(op.error!, style: const TextStyle(color: Colors.red)),
+          Text(op.error!, style: TextStyle(color: colorScheme.error)),
           const SizedBox(height: 16),
           ElevatedButton(onPressed: () => op.loadCategories(), child: const Text('重试')),
         ],
       ));
     }
     if (categories.isEmpty) {
-      return const Center(child: Text('暂无分类', style: TextStyle(color: Colors.white54)));
+      return Center(child: Text('暂无分类', style: TextStyle(color: colorScheme.onSurfaceVariant)));
     }
     return GridView.builder(
       padding: const EdgeInsets.all(12),
@@ -76,9 +77,9 @@ class _OnlinePageState extends State<OnlinePage> {
           onTap: () => _onCategoryTap(cat),
           child: Container(
             decoration: BoxDecoration(
-              color: Colors.white10, borderRadius: BorderRadius.circular(12)),
+              color: colorScheme.surfaceContainerHigh, borderRadius: BorderRadius.circular(12)),
             child: Center(
-              child: Text(cat.name, style: const TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.bold), textAlign: TextAlign.center),
+              child: Text(cat.name, style: TextStyle(color: colorScheme.onSurface, fontSize: 16, fontWeight: FontWeight.bold), textAlign: TextAlign.center),
             ),
           ),
         );
@@ -131,6 +132,7 @@ class _OnlineContentPageState extends State<_OnlineContentPage> {
 
   @override
   Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
     return Scaffold(
       appBar: AppBar(title: Text(widget.category.name)),
       body: Consumer<OnlineProvider>(
@@ -142,7 +144,7 @@ class _OnlineContentPageState extends State<_OnlineContentPage> {
             return Center(child: Column(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
-                Text(op.error!, style: const TextStyle(color: Colors.red)),
+                Text(op.error!, style: TextStyle(color: colorScheme.error)),
                 const SizedBox(height: 16),
                 ElevatedButton(onPressed: () {
                   if (widget.category.type == CategoryType.video) {
@@ -163,15 +165,15 @@ class _OnlineContentPageState extends State<_OnlineContentPage> {
                 aspectRatio: 9 / 16,
                 child: _controller != null
                   ? Video(controller: _controller!, controls: NoVideoControls)
-                  : const Center(child: CircularProgressIndicator(color: Colors.white)),
+                  : Center(child: CircularProgressIndicator(color: colorScheme.primary)),
               ),
             );
           }
           return Center(
             child: CachedNetworkImage(imageUrl: url, fit: BoxFit.contain,
               memCacheWidth: 1080,
-              placeholder: (_, _) => const Center(child: CircularProgressIndicator(color: Colors.white)),
-              errorWidget: (_, _, _) => const Icon(Icons.broken_image, size: 100, color: Colors.white24)),
+              placeholder: (_, _) => Center(child: CircularProgressIndicator(color: colorScheme.primary)),
+              errorWidget: (_, _, _) => Icon(Icons.broken_image, size: 100, color: colorScheme.onSurfaceVariant)),
           );
         },
       ),

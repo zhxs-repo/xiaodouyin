@@ -27,7 +27,6 @@ class _ProgressBarState extends State<ProgressBar> {
   @override
   void didUpdateWidget(ProgressBar oldWidget) {
     super.didUpdateWidget(oldWidget);
-    // player切换时，重新订阅流
     if (widget.player != _currentPlayer) {
       _positionSubscription?.cancel();
       _durationSubscription?.cancel();
@@ -38,11 +37,8 @@ class _ProgressBarState extends State<ProgressBar> {
   void _listenToPlayer() {
     _currentPlayer = widget.player;
     if (widget.player == null) return;
-
-    // 先读取player当前状态作为初始值（避免错过stream已发出的事件）
     _position = widget.player!.state.position;
     _duration = widget.player!.state.duration;
-
     _positionSubscription = widget.player!.stream.position.listen((pos) {
       if (!_isDragging && mounted) setState(() => _position = pos);
     });
@@ -60,38 +56,58 @@ class _ProgressBarState extends State<ProgressBar> {
 
   @override
   Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
     final progress = _duration.inMilliseconds > 0
       ? _position.inMilliseconds / _duration.inMilliseconds : 0.0;
+    final clampedProgress = progress.clamp(0.0, 1.0);
+    final textStyle = Theme.of(context).textTheme.labelSmall?.copyWith(
+      color: Colors.white.withValues(alpha: 0.75),
+      fontFeatures: const [FontFeature.tabularFigures()],
+    );
 
     return Row(
       children: [
-        Text(_formatDuration(_position), style: const TextStyle(color: Colors.white54, fontSize: 12)),
+        Text(_formatDuration(_position), style: textStyle),
+        const SizedBox(width: 8),
         Expanded(
-          child: SliderTheme(
-            data: SliderThemeData(
-              overlayShape: SliderComponentShape.noOverlay,
-              thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 6),
-              showValueIndicator: ShowValueIndicator.onlyForDiscrete,
-            ),
-            child: Slider(
-              value: progress.clamp(0.0, 1.0),
-              label: _isDragging ? _formatDuration(_position) : null,
-              onChanged: (v) {
-                final newPos = Duration(milliseconds: (v * _duration.inMilliseconds).round());
-                setState(() {
-                  _isDragging = true;
-                  _position = newPos;
-                });
-              },
-              onChangeEnd: (v) {
-                final newPos = Duration(milliseconds: (v * _duration.inMilliseconds).round());
-                widget.player?.seek(newPos);
-                setState(() => _isDragging = false);
-              },
+          child: AnimatedScale(
+            scale: _isDragging ? 1.0 : 1.0,
+            duration: const Duration(milliseconds: 150),
+            child: SliderTheme(
+              data: SliderTheme.of(context).copyWith(
+                activeTrackColor: colorScheme.primary,
+                inactiveTrackColor: Colors.white.withValues(alpha: 0.20),
+                thumbColor: colorScheme.primary,
+                overlayColor: colorScheme.primary.withValues(alpha: 0.16),
+                trackHeight: 4,
+                thumbShape: RoundSliderThumbShape(
+                  enabledThumbRadius: _isDragging ? 9 : 6,
+                  elevation: 0,
+                  pressedElevation: 0,
+                ),
+                overlayShape: const RoundSliderOverlayShape(overlayRadius: 18),
+                showValueIndicator: ShowValueIndicator.never,
+              ),
+              child: Slider(
+                value: clampedProgress,
+                onChanged: (v) {
+                  final newPos = Duration(milliseconds: (v * _duration.inMilliseconds).round());
+                  setState(() {
+                    _isDragging = true;
+                    _position = newPos;
+                  });
+                },
+                onChangeEnd: (v) {
+                  final newPos = Duration(milliseconds: (v * _duration.inMilliseconds).round());
+                  widget.player?.seek(newPos);
+                  if (mounted) setState(() => _isDragging = false);
+                },
+              ),
             ),
           ),
         ),
-        Text(_formatDuration(_duration), style: const TextStyle(color: Colors.white54, fontSize: 12)),
+        const SizedBox(width: 8),
+        Text(_formatDuration(_duration), style: textStyle),
       ],
     );
   }
@@ -99,7 +115,6 @@ class _ProgressBarState extends State<ProgressBar> {
   String _formatDuration(Duration d) {
     final m = d.inMinutes.remainder(60).toString().padLeft(2, '0');
     final s = d.inSeconds.remainder(60).toString().padLeft(2, '0');
-    // 短视频(<1小时)显示 MM:SS，长视频显示 H:MM:SS
     if (d.inHours > 0) {
       return '${d.inHours}:$m:$s';
     }

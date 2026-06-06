@@ -15,13 +15,14 @@ class _ColorPickerDialogState extends State<ColorPickerDialog> {
   void initState() {
     super.initState();
     final hex = widget.initialColor.replaceAll('#', '');
-    _selectedColor = hex.length == 6 ? Color(int.parse('FF$hex', radix: 16)) : Colors.white;
+    _selectedColor = hex.length == 6 ? Color(int.parse('FF$hex', radix: 16)) : Colors.black;
   }
 
   @override
   Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
     return AlertDialog(
-      title: const Text('选择颜色', style: TextStyle(color: Colors.white)),
+      title: const Text('选择颜色'),
       content: Wrap(
         spacing: 8, runSpacing: 8,
         children: [
@@ -34,7 +35,7 @@ class _ColorPickerDialogState extends State<ColorPickerDialog> {
             width: 36, height: 36,
             decoration: BoxDecoration(
               color: c, shape: BoxShape.circle,
-              border: _selectedColor == c ? Border.all(color: Colors.white, width: 3) : null),
+              border: _selectedColor == c ? Border.all(color: colorScheme.onSurface, width: 3) : null),
           ),
         )).toList(),
       ),

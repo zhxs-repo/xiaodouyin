@@ -124,12 +124,13 @@ class _NotebookPageState extends State<NotebookPage> {
 
   @override
   Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
     return Scaffold(
       appBar: AppBar(title: const Text('笔记本')),
       body: _isLoading
           ? const Center(child: CircularProgressIndicator())
           : _notes.isEmpty
-              ? const Center(child: Text('暂无笔记', style: TextStyle(color: Colors.white54)))
+              ? Center(child: Text('暂无笔记', style: TextStyle(color: colorScheme.onSurfaceVariant)))
               : ListView.builder(
                   itemCount: _notes.length,
                   itemBuilder: (context, index) => Dismissible(
@@ -138,13 +139,13 @@ class _NotebookPageState extends State<NotebookPage> {
                     background: Container(
                       alignment: Alignment.centerRight,
                       padding: const EdgeInsets.only(right: 16),
-                      color: Colors.red.withValues(alpha: 0.3),
-                      child: const Icon(Icons.delete, color: Colors.white),
+                      color: colorScheme.error.withValues(alpha: 0.3),
+                      child: Icon(Icons.delete, color: colorScheme.onError),
                     ),
                     onDismissed: (_) => _deleteNote(index),
                     child: ListTile(
-                      title: Text(_notes[index].content, style: const TextStyle(color: Colors.white70, fontSize: 13)),
-                      leading: Text('${index + 1}', style: const TextStyle(color: Colors.white38)),
+                      title: Text(_notes[index].content, style: TextStyle(color: colorScheme.onSurface, fontSize: 13)),
+                      leading: Text('${index + 1}', style: TextStyle(color: colorScheme.onSurfaceVariant)),
                       onTap: () => _editNote(index),
                     ),
                   ),

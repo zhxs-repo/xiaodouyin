@@ -9,9 +9,11 @@ import '../../data/models/video_item.dart';
 import '../../data/repositories/video_repository.dart';
 import '../../data/services/file_service.dart';
 import '../../data/services/thumbnail_service.dart';
+import '../../core/theme/app_theme.dart';
 import '../../core/utils/toast_util.dart';
 import '../../core/constants/storage_keys.dart';
 import '../../data/services/storage_service.dart';
+import '../widgets/shimmer_loading.dart';
 import 'play_history_page.dart';
 
 class VideoListPage extends StatefulWidget {
@@ -46,19 +48,55 @@ class _VideoListPageState extends State<VideoListPage> {
 
   @override
   Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
     return Scaffold(
       appBar: AppBar(
-        title: TextField(
-          controller: _searchController,
-          style: const TextStyle(color: Colors.white),
-          decoration: const InputDecoration(hintText: '搜索视频...', hintStyle: TextStyle(color: Colors.white54), border: InputBorder.none),
-          onSubmitted: (keyword) => context.read<SearchProvider>().search(keyword),
+        title: SizedBox(
+          height: 44,
+          child: TextField(
+            controller: _searchController,
+            textInputAction: TextInputAction.search,
+            style: TextStyle(color: colorScheme.onSurface),
+            decoration: InputDecoration(
+              hintText: '搜索视频...',
+              hintStyle: TextStyle(color: colorScheme.onSurfaceVariant),
+              prefixIcon: Icon(Icons.search_rounded, color: colorScheme.onSurfaceVariant, size: 20),
+              suffixIcon: _searchController.text.isEmpty
+                  ? null
+                  : IconButton(
+                      icon: Icon(Icons.close_rounded, color: colorScheme.onSurfaceVariant, size: 18),
+                      onPressed: () {
+                        _searchController.clear();
+                        setState(() {});
+                      },
+                    ),
+              filled: true,
+              fillColor: colorScheme.surfaceContainerHigh,
+              contentPadding: const EdgeInsets.symmetric(vertical: 0, horizontal: 16),
+              border: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(AppTheme.radiusFull),
+                borderSide: BorderSide.none,
+              ),
+              enabledBorder: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(AppTheme.radiusFull),
+                borderSide: BorderSide.none,
+              ),
+              focusedBorder: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(AppTheme.radiusFull),
+                borderSide: BorderSide(color: colorScheme.primary, width: 1.5),
+              ),
+            ),
+            onChanged: (_) => setState(() {}),
+            onSubmitted: (keyword) => context.read<SearchProvider>().search(keyword),
+          ),
         ),
         actions: [
-          IconButton(icon: const Icon(Icons.search), onPressed: () => context.read<SearchProvider>().search(_searchController.text)),
-          // 列数切换
           IconButton(
-            icon: Badge(label: Text('$_columnCount'), child: const Icon(Icons.grid_view)),
+            icon: Badge(
+              label: Text('$_columnCount'),
+              backgroundColor: colorScheme.primary,
+              child: const Icon(Icons.grid_view_rounded),
+            ),
             tooltip: '切换列数',
             onPressed: () async {
               setState(() => _columnCount = _columnCount >= 5 ? 2 : _columnCount + 1);
@@ -66,10 +104,9 @@ class _VideoListPageState extends State<VideoListPage> {
               await storage.setInt(StorageKeys.videoColumnCount, _columnCount);
             },
           ),
-          // 继续播放
           Consumer<ResumeProvider>(
             builder: (context, resume, _) => IconButton(
-              icon: const Icon(Icons.play_circle_outline),
+              icon: const Icon(Icons.play_circle_outline_rounded),
               tooltip: '继续播放',
               onPressed: () {
                 final vp = context.read<VideoPlayerProvider>();
@@ -80,17 +117,17 @@ class _VideoListPageState extends State<VideoListPage> {
             ),
           ),
           IconButton(
-            icon: const Icon(Icons.cleaning_services),
+            icon: const Icon(Icons.find_in_page_rounded),
             tooltip: '重复检测',
             onPressed: () => _showDuplicateVideos(context),
           ),
           IconButton(
-            icon: const Icon(Icons.history),
+            icon: const Icon(Icons.history_rounded),
             tooltip: '播放历史',
             onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const PlayHistoryPage())),
           ),
           PopupMenuButton<String>(
-            icon: const Icon(Icons.filter_list),
+            icon: const Icon(Icons.filter_list_rounded),
             onSelected: (blogger) => context.read<SearchProvider>().filterByBlogger(blogger),
             itemBuilder: (_) {
               final groups = context.read<SearchProvider>().bloggerGroups;
@@ -103,12 +140,17 @@ class _VideoListPageState extends State<VideoListPage> {
         builder: (context, sp, _) {
           final videos = sp.results.isEmpty && sp.keyword.isEmpty
             ? context.watch<VideoPlayerProvider>().videoList : sp.results;
-          if (videos.isEmpty) return const Center(child: Text('未找到匹配视频', style: TextStyle(color: Colors.white54)));
+          if (videos.isEmpty) {
+            if (sp.keyword.isNotEmpty) {
+              return _buildEmptyState('未找到匹配视频');
+            }
+            return const ThumbnailShimmerPlaceholder();
+          }
           final thumbnailEnabled = context.watch<ConfigProvider>().config.thumbnailLoadEnabled;
           return GridView.builder(
-            padding: const EdgeInsets.all(4),
+            padding: const EdgeInsets.all(6),
             gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-              crossAxisCount: _columnCount, crossAxisSpacing: 4, mainAxisSpacing: 4),
+              crossAxisCount: _columnCount, crossAxisSpacing: 6, mainAxisSpacing: 6, childAspectRatio: 9 / 13),
             itemCount: videos.length,
             itemBuilder: (context, index) => _buildVideoItem(videos[index], thumbnailEnabled),
           );
@@ -117,7 +159,21 @@ class _VideoListPageState extends State<VideoListPage> {
     );
   }
 
+  Widget _buildEmptyState(String message) {
+    return Center(
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(Icons.search_off_rounded, size: 64, color: Theme.of(context).colorScheme.onSurfaceVariant),
+          const SizedBox(height: 16),
+          Text(message, style: Theme.of(context).textTheme.bodyLarge),
+        ],
+      ),
+    );
+  }
+
   Widget _buildVideoItem(VideoItem video, bool thumbnailEnabled) {
+    final colorScheme = Theme.of(context).colorScheme;
     return GestureDetector(
       onTap: () {
         final vp = context.read<VideoPlayerProvider>();
@@ -125,43 +181,80 @@ class _VideoListPageState extends State<VideoListPage> {
         Navigator.pop(context);
       },
       onLongPress: () => _showDeleteConfirm(context, video),
-      child: Container(
-        color: Colors.grey.shade900,
-        child: Stack(
-          fit: StackFit.expand,
-          children: [
-            if (thumbnailEnabled)
-              _buildThumbnail(video)
-            else
-              const Center(child: Icon(Icons.videocam, color: Colors.white24)),
-            Positioned(bottom: 0, left: 0, right: 0,
-              child: Container(
-                padding: const EdgeInsets.all(4),
-                color: Colors.black54,
-                child: Text(video.bloggerName ?? video.fileName, style: const TextStyle(color: Colors.white, fontSize: 10), maxLines: 1, overflow: TextOverflow.ellipsis),
-              )),
-          ],
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(AppTheme.radiusM),
+        child: Container(
+          color: colorScheme.surfaceContainer,
+          child: Stack(
+            fit: StackFit.expand,
+            children: [
+              if (thumbnailEnabled)
+                _buildThumbnail(video)
+              else
+                Center(child: Icon(Icons.videocam_rounded, color: colorScheme.onSurfaceVariant, size: 32)),
+              // 底部渐变蒙层
+              Positioned.fill(
+                child: DecoratedBox(
+                  decoration: BoxDecoration(
+                    gradient: LinearGradient(
+                      begin: Alignment.topCenter,
+                      end: Alignment.bottomCenter,
+                      colors: [
+                        Colors.transparent,
+                        Colors.transparent,
+                        Colors.black.withValues(alpha: 0.7),
+                      ],
+                      stops: const [0.0, 0.5, 1.0],
+                    ),
+                  ),
+                ),
+              ),
+              Positioned(
+                bottom: 0, left: 0, right: 0,
+                child: Padding(
+                  padding: const EdgeInsets.all(8),
+                  child: Text(
+                    video.bloggerName ?? video.fileName,
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 11,
+                      fontWeight: FontWeight.w500,
+                      shadows: [Shadow(color: Colors.black54, blurRadius: 4)],
+                    ),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ),
+              ),
+            ],
+          ),
         ),
       ),
     );
   }
 
   Widget _buildThumbnail(VideoItem video) {
+    final colorScheme = Theme.of(context).colorScheme;
     final thumbnailService = context.read<ThumbnailService>();
     return FutureBuilder<Uint8List?>(
       future: thumbnailService.getThumbnail(video.path),
       builder: (context, snapshot) {
         if (snapshot.connectionState == ConnectionState.waiting) {
           return Container(
-            color: Colors.grey.shade800,
-            child: const Center(child: SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white24))),
+            color: colorScheme.surfaceContainerHigh,
+            child: Center(
+              child: SizedBox(
+                width: 20, height: 20,
+                child: CircularProgressIndicator(strokeWidth: 2, color: colorScheme.onSurfaceVariant.withValues(alpha: 0.5)),
+              ),
+            ),
           );
         }
         if (snapshot.hasData && snapshot.data != null) {
           return Image.memory(snapshot.data!, fit: BoxFit.cover, cacheWidth: 200,
-            errorBuilder: (_, _, _) => const Icon(Icons.videocam, color: Colors.white24));
+            errorBuilder: (_, _, _) => Icon(Icons.videocam_rounded, color: colorScheme.onSurfaceVariant, size: 32));
         }
-        return const Center(child: Icon(Icons.videocam, color: Colors.white24));
+        return Center(child: Icon(Icons.videocam_rounded, color: colorScheme.onSurfaceVariant, size: 32));
       },
     );
   }
@@ -189,7 +282,7 @@ class _VideoListPageState extends State<VideoListPage> {
                 vp.setVideoList(updatedList);
               }
             },
-            child: const Text('删除', style: TextStyle(color: Colors.red)),
+            child: Text('删除', style: TextStyle(color: Theme.of(ctx).colorScheme.error)),
           ),
         ],
       ),
@@ -234,6 +327,7 @@ class _DuplicateVideosPage extends StatelessWidget {
   }
 
   Widget _buildGroup(BuildContext context, String name, List<VideoItem> videos) {
+    final colorScheme = Theme.of(context).colorScheme;
     return Card(
       margin: const EdgeInsets.only(bottom: 8),
       child: Padding(
@@ -241,15 +335,15 @@ class _DuplicateVideosPage extends StatelessWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text(name, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 14)),
-            const Divider(color: Colors.white24),
+            Text(name, style: TextStyle(color: colorScheme.onSurface, fontWeight: FontWeight.bold, fontSize: 14)),
+            Divider(color: colorScheme.outlineVariant),
             ...videos.map((v) => Row(
               children: [
                 Expanded(
-                  child: Text(v.path, style: const TextStyle(color: Colors.white70, fontSize: 11), maxLines: 1, overflow: TextOverflow.ellipsis),
+                  child: Text(v.path, style: TextStyle(color: colorScheme.onSurfaceVariant, fontSize: 11), maxLines: 1, overflow: TextOverflow.ellipsis),
                 ),
                 IconButton(
-                  icon: const Icon(Icons.delete_outline, color: Colors.redAccent, size: 18),
+                  icon: Icon(Icons.delete_outline, color: colorScheme.error, size: 18),
                   onPressed: () => _deleteVideo(context, v),
                 ),
               ],
@@ -277,7 +371,7 @@ class _DuplicateVideosPage extends StatelessWidget {
                 ToastUtil.show(context, '已删除 ${video.fileName}');
               }
             },
-            child: const Text('删除', style: TextStyle(color: Colors.red)),
+            child: Text('删除', style: TextStyle(color: Theme.of(ctx).colorScheme.error)),
           ),
         ],
       ),

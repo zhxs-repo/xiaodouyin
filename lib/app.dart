@@ -33,6 +33,18 @@ class App extends StatelessWidget {
 
   App({super.key, required this.storage});
 
+  ThemeMode _parseThemeMode(String mode) {
+    switch (mode) {
+      case 'light':
+        return ThemeMode.light;
+      case 'dark':
+        return ThemeMode.dark;
+      case 'system':
+      default:
+        return ThemeMode.system;
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return MultiProvider(
@@ -50,11 +62,15 @@ class App extends StatelessWidget {
         ChangeNotifierProvider(create: (_) => CultivationProvider()),
         Provider<ThumbnailService>.value(value: _thumbnailService),
       ],
-      child: MaterialApp(
-        title: '小抖音',
-        theme: AppTheme.darkTheme,
-        home: const SplashPage(),
-        debugShowCheckedModeBanner: false,
+      child: Consumer<ConfigProvider>(
+        builder: (context, cp, _) => MaterialApp(
+          title: '小抖音',
+          theme: AppTheme.lightTheme,
+          darkTheme: AppTheme.darkTheme,
+          themeMode: _parseThemeMode(cp.config.themeMode),
+          home: const SplashPage(),
+          debugShowCheckedModeBanner: false,
+        ),
       ),
     );
   }
