@@ -24,6 +24,7 @@ import 'data/services/thumbnail_service.dart';
 import 'core/theme/app_theme.dart';
 import 'ui/pages/splash_page.dart';
 import 'ui/pages/settings_page.dart';
+import 'ui/pages/main_shell.dart';
 
 class App extends StatelessWidget {
   final StorageService storage;

@@ -94,7 +94,7 @@ class _SplashPageState extends State<SplashPage> with TickerProviderStateMixin {
   void _navigateToMode(String mode) {
     switch (mode) {
       case 'video':
-        Navigator.pushReplacement(context, MaterialPageRoute(builder: (_) => const VideoPlayerPage()));
+        Navigator.pushReplacement(context, MaterialPageRoute(builder: (_) => const MainShell()));
         break;
       case 'beauty':
         Navigator.pushReplacement(context, MaterialPageRoute(builder: (_) => const BeautyPage()));

@@ -39,6 +39,7 @@ import '../widgets/timer_display.dart';
 import '../widgets/progress_bar.dart' as custom;
 import '../widgets/gesture_resolver.dart';
 import '../widgets/screenshot_button.dart';
+import '../../services/danmaku_xml_parser.dart';
 import 'video_list_page.dart';
 import 'notebook_page.dart';
 import 'settings_page.dart';
@@ -103,6 +104,7 @@ class _VideoPlayerPageState extends State<VideoPlayerPage>
       windowManager.addListener(this);
     }
     _loadVideos();
+    _loadLocalDanmaku(); // 加载本地 XML 弹幕
   }
 
   @override
@@ -172,6 +174,21 @@ class _VideoPlayerPageState extends State<VideoPlayerPage>
 
   // ==================== 视频加载 ====================
 
+
+  /// 加载本地 XML 弹幕
+  Future<void> _loadLocalDanmaku() async {
+    final videos = context.read<VideoPlayerProvider>().videos;
+    if (videos.isEmpty) return;
+
+    final currentVideo = videos.first; // 当前播放的视频
+    final danmakus = await DanmakuXmlParser.loadFromFile(currentVideo.path);
+    
+    if (danmakus.isNotEmpty && mounted) {
+      final danmakuProvider = context.read<DanmakuProvider>();
+      danmakuProvider.addDanmakus(danmakus);
+      print('[VideoPlayerPage] Loaded ${danmakus.length} danmakus from XML');
+    }
+  }
   Future<void> _loadVideos() async {
     // 先加载长视频模式用户偏好,避免首屏闪烁
     await _loadLongVideoOverrideAsync();

@@ -1,59 +1,28 @@
 ```
-# Dependencies
-.dart_tool/
+# Dependency directories
+.pub/
 .build/
-.dependencies/
+.dart_tool/
 
 # Logs and temp files
 *.log
 *.tmp
 
-# Environment variables
+# Environment
 .env
 .env.local
 *.env.*
 
-# IDE files
-.idea/
+# Editor/IDE files
 .vscode/
+.idea/
 *.swp
 *.swo
 
-# Coverage reports
-coverage/
-htmlcov/
-.coverage
-
-# Distribution / build artifacts
-dist/
+# Build artifacts
 build/
-*.so
-*.dylib
-*.dll
-*.exe
+dist/
+*.o
+*.obj
 *.out
-
-# Compression files
-*.zip
-*.gz
-*.tar
-*.tgz
-*.bz2
-*.xz
-*.7z
-*.rar
-*.zst
-*.lz4
-*.lzh
-*.cab
-*.arj
-*.rpm
-*.deb
-*.Z
-*.lz
-*.lzo
-*.tar.gz
-*.tar.bz2
-*.tar.xz
-*.tar.zst
 ```
