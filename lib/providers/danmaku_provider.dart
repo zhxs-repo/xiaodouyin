@@ -6,6 +6,7 @@ import '../data/models/danmaku_word_lib.dart';
 import '../core/constants/bullet_constants.dart';
 import '../core/constants/storage_keys.dart';
 import '../data/services/storage_service.dart';
+import '../data/services/danmaku_xml_parser.dart';
 
 enum DanmakuPosition { scroll, top, bottom }
 
@@ -112,6 +113,7 @@ class DanmakuItem {
 class DanmakuProvider extends ChangeNotifier {
   DanmakuWordLib _wordLib = DanmakuWordLib.defaultLib();
   final List<DanmakuItem> _activeBullets = [];
+  final List<DanmakuItem> _videoDanmakus = []; // 存储从 XML 加载的视频弹幕
   bool _isEnabled = false;
   Timer? _generateTimer;
   Timer? _notifyTimer;
@@ -123,7 +125,46 @@ class DanmakuProvider extends ChangeNotifier {
   DanmakuWordLib get wordLib => _wordLib;
   bool get isEnabled => _isEnabled;
   List<DanmakuItem> get activeBullets => List.unmodifiable(_activeBullets);
+  List<DanmakuItem> get videoDanmakus => List.unmodifiable(_videoDanmakus);
   DanmakuConfig get config => _config;
+
+  /// 从 XML 文件加载视频弹幕
+  Future<void> loadVideoDanmakus(String videoPath) async {
+    print('[DanmakuProvider] 开始加载视频弹幕：$videoPath');
+    try {
+      final danmakus = await DanmakuXmlParser.loadForVideo(videoPath);
+      _videoDanmakus.clear();
+      
+      for (final d in danmakus) {
+        _videoDanmakus.add(DanmakuItem(
+          text: d.text,
+          position: _convertModeToPosition(d.mode),
+          time: d.time,
+          colorValue: d.color,
+          size: _fontSizeToSize(d.fontSize),
+          opacity: 1.0,
+        ));
+      }
+      
+      print('[DanmakuProvider] 成功加载 ${_videoDanmakus.length} 条弹幕');
+      notifyListeners();
+    } catch (e) {
+      print('[DanmakuProvider] 加载弹幕失败：$e');
+    }
+  }
+
+  DanmakuPosition _convertModeToPosition(dynamic mode) {
+    // 根据 DanmakuMode 转换为 DanmakuPosition
+    if (mode.toString().contains('top')) return DanmakuPosition.top;
+    if (mode.toString().contains('bottom')) return DanmakuPosition.bottom;
+    return DanmakuPosition.scroll;
+  }
+
+  DanmakuSize _fontSizeToSize(double fontSize) {
+    if (fontSize < 20) return DanmakuSize.small;
+    if (fontSize > 25) return DanmakuSize.large;
+    return DanmakuSize.medium;
+  }
 
   Future<void> load() async {
     if (_loaded) return;
