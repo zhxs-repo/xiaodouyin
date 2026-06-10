@@ -37,7 +37,8 @@ import '../widgets/favorite_button.dart';
 import '../widgets/real_time_counter.dart';
 import '../widgets/timer_display.dart';
 import '../widgets/progress_bar.dart' as custom;
-import '../widgets/playback_gesture_detector.dart';
+import '../widgets/gesture_resolver.dart';
+import '../widgets/screenshot_button.dart';
 import 'video_list_page.dart';
 import 'notebook_page.dart';
 import 'settings_page.dart';
@@ -867,6 +868,19 @@ class _VideoPlayerPageState extends State<VideoPlayerPage>
                       onPressed: _togglePlayPause,
                     ),
                     const Spacer(),
+                    // 截图按钮 (移动端)
+                    if (!PlatformUtils.isDesktop)
+                      ScreenshotButton(
+                        player: currentEntry?.player,
+                        onCaptured: (success, path) {
+                          if (success && path != null) {
+                            ToastUtil.show('截图已保存');
+                          } else {
+                            ToastUtil.show('截图失败');
+                          }
+                        },
+                      ),
+                    const SizedBox(width: 8),
                     _GlassIconButton(
                       icon: _volumeIcon(_volume),
                       tooltip: '音量 ${_volume.toInt()}%',
@@ -931,6 +945,19 @@ class _VideoPlayerPageState extends State<VideoPlayerPage>
                               ),
                             ),
                             const Spacer(),
+                    // 截图按钮 (移动端)
+                    if (!PlatformUtils.isDesktop)
+                      ScreenshotButton(
+                        player: currentEntry?.player,
+                        onCaptured: (success, path) {
+                          if (success && path != null) {
+                            ToastUtil.show('截图已保存');
+                          } else {
+                            ToastUtil.show('截图失败');
+                          }
+                        },
+                      ),
+                    const SizedBox(width: 8),
                             Text(
                               '${_volume.toInt()}%',
                               style: TextStyle(
@@ -1056,10 +1083,10 @@ class _VideoPlayerPageState extends State<VideoPlayerPage>
           ),
         ),
 
-        // 点击交互层 - 仅 onTap，不拦截 drag，让垂直滑动穿透到 PageView
+        // 点击交互层 - 使用 GestureResolver 解决手势冲突
         if (isCurrentPage && !PlatformUtils.isDesktop)
           Positioned.fill(
-            child: PlaybackGestureDetector(
+            child: GestureResolver(
               player: entry?.player,
               onVolumeChanged: (v) {
                 if (mounted) {
@@ -1069,11 +1096,21 @@ class _VideoPlayerPageState extends State<VideoPlayerPage>
                   });
                 }
               },
+              onBrightnessChanged: (b) {
+                if (mounted) {
+                  setState(() => _brightness = b);
+                }
+              },
               onSingleTap: _onSingleTap,
               onDoubleTap: _onDoubleTapLike,
-              onHorizontalDragEnd: (details) {
-                if (details.primaryVelocity != null && details.primaryVelocity! < -300) {
-                  _captureThumbnail();
+              onSeek: (offset) {
+                entry?.player.seek(Duration(milliseconds: offset.inMilliseconds));
+              },
+              onTogglePlay: () {
+                if (entry?.player.state.playing == true) {
+                  entry?.player.pause();
+                } else {
+                  entry?.player.play();
                 }
               },
               child: const SizedBox.expand(),
