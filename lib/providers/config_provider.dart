@@ -55,6 +55,9 @@ class ConfigProvider extends ChangeNotifier {
     String? beautyModePassword,
     String? onlineModePassword,
     String? themeMode,
+    bool? smartPlayModeEnabled,
+    String? devicePerformanceLevel,
+    bool? advancedEffectsEnabled,
   }) async {
     _config = _config.copyWith(
       playMode: playMode,
@@ -78,13 +81,16 @@ class ConfigProvider extends ChangeNotifier {
       beautyModePassword: beautyModePassword,
       onlineModePassword: onlineModePassword,
       themeMode: themeMode,
+      smartPlayModeEnabled: smartPlayModeEnabled,
+      devicePerformanceLevel: devicePerformanceLevel,
+      advancedEffectsEnabled: advancedEffectsEnabled,
     );
     await _repository.updateConfig(_config);
     _syncCustomDirs();
     notifyListeners();
   }
 
-  /// 仅更新内存状态（用于Slider拖拽实时预览），不持久化
+  /// 仅更新内存状态（用于 Slider 拖拽实时预览），不持久化
   void updateFieldMemoryOnly({
     PlayMode? playMode,
     double? scale,
@@ -107,6 +113,9 @@ class ConfigProvider extends ChangeNotifier {
     String? beautyModePassword,
     String? onlineModePassword,
     String? themeMode,
+    bool? smartPlayModeEnabled,
+    String? devicePerformanceLevel,
+    bool? advancedEffectsEnabled,
   }) {
     _config = _config.copyWith(
       playMode: playMode,
@@ -130,8 +139,30 @@ class ConfigProvider extends ChangeNotifier {
       beautyModePassword: beautyModePassword,
       onlineModePassword: onlineModePassword,
       themeMode: themeMode,
+      smartPlayModeEnabled: smartPlayModeEnabled,
+      devicePerformanceLevel: devicePerformanceLevel,
+      advancedEffectsEnabled: advancedEffectsEnabled,
     );
     notifyListeners();
   }
 
+  // === v2.0 新增方法：智能模式与性能分级控制 ===
+
+  /// 切换智能播放模式开关
+  Future<void> toggleSmartPlayMode(bool enabled) async {
+    await updateField(smartPlayModeEnabled: enabled);
+  }
+
+  /// 更新设备性能等级 (low/medium/high)
+  Future<void> updatePerformanceLevel(String level) async {
+    if (!['low', 'medium', 'high'].contains(level)) {
+      throw ArgumentError('Invalid performance level: $level');
+    }
+    await updateField(devicePerformanceLevel: level);
+  }
+
+  /// 切换高级特效总开关
+  Future<void> toggleAdvancedEffects(bool enabled) async {
+    await updateField(advancedEffectsEnabled: enabled);
+  }
 }

@@ -28,6 +28,12 @@ class AppConfig {
   final String onlineModePassword;
   // 主题模式: 'system' / 'dark' / 'light'
   final String themeMode;
+  // 智能播放模式开关（默认关闭，用户可手动开启）
+  final bool smartPlayModeEnabled;
+  // 设备性能等级：'low' / 'medium' / 'high' (自动检测或手动设置)
+  final String devicePerformanceLevel;
+  // 高级特效默认开启状态（根据性能等级自动调整）
+  final bool advancedEffectsEnabled;
 
   const AppConfig({
     this.playMode = PlayMode.normal,
@@ -51,6 +57,9 @@ class AppConfig {
     this.beautyModePassword = '88',
     this.onlineModePassword = '77',
     this.themeMode = 'system',
+    this.smartPlayModeEnabled = false,
+    this.devicePerformanceLevel = 'medium',
+    this.advancedEffectsEnabled = true,
   });
 
   AppConfig copyWith({
@@ -75,6 +84,9 @@ class AppConfig {
     String? beautyModePassword,
     String? onlineModePassword,
     String? themeMode,
+    bool? smartPlayModeEnabled,
+    String? devicePerformanceLevel,
+    bool? advancedEffectsEnabled,
   }) => AppConfig(
     playMode: playMode ?? this.playMode,
     scale: scale ?? this.scale,
@@ -95,6 +107,9 @@ class AppConfig {
     customImageDir: customImageDir ?? this.customImageDir,
     videoModePassword: videoModePassword ?? this.videoModePassword,
     beautyModePassword: beautyModePassword ?? this.beautyModePassword,
+    smartPlayModeEnabled: smartPlayModeEnabled ?? this.smartPlayModeEnabled,
+    devicePerformanceLevel: devicePerformanceLevel ?? this.devicePerformanceLevel,
+    advancedEffectsEnabled: advancedEffectsEnabled ?? this.advancedEffectsEnabled,
     onlineModePassword: onlineModePassword ?? this.onlineModePassword,
     themeMode: themeMode ?? this.themeMode,
   );
@@ -121,6 +136,9 @@ class AppConfig {
     'beautyModePassword': beautyModePassword,
     'onlineModePassword': onlineModePassword,
     'themeMode': themeMode,
+    'smartPlayModeEnabled': smartPlayModeEnabled,
+    'devicePerformanceLevel': devicePerformanceLevel,
+    'advancedEffectsEnabled': advancedEffectsEnabled,
   };
 
   factory AppConfig.fromJson(Map<String, dynamic> json) => AppConfig(
@@ -147,5 +165,8 @@ class AppConfig {
     beautyModePassword: json['beautyModePassword'] as String? ?? '88',
     onlineModePassword: json['onlineModePassword'] as String? ?? '77',
     themeMode: json['themeMode'] as String? ?? 'system',
+    smartPlayModeEnabled: json['smartPlayModeEnabled'] as bool? ?? false,
+    devicePerformanceLevel: json['devicePerformanceLevel'] as String? ?? 'medium',
+    advancedEffectsEnabled: json['advancedEffectsEnabled'] as bool? ?? true,
   );
 }

@@ -23,6 +23,7 @@ import 'data/services/audio_service.dart';
 import 'data/services/thumbnail_service.dart';
 import 'core/theme/app_theme.dart';
 import 'ui/pages/splash_page.dart';
+import 'ui/pages/settings_page.dart';
 
 class App extends StatelessWidget {
   final StorageService storage;
@@ -69,6 +70,9 @@ class App extends StatelessWidget {
           darkTheme: AppTheme.darkTheme,
           themeMode: _parseThemeMode(cp.config.themeMode),
           home: const SplashPage(),
+          routes: {
+            '/settings': (context) => const SettingsPage(),
+          },
           debugShowCheckedModeBanner: false,
         ),
       ),
