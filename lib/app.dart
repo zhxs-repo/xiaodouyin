@@ -12,7 +12,6 @@ import 'providers/resume_provider.dart';
 import 'providers/device_provider.dart';
 import 'providers/cultivation_provider.dart';
 import 'data/repositories/config_repository.dart';
-import 'data/repositories/video_repository.dart';
 import 'data/repositories/favorite_repository.dart';
 import 'data/repositories/search_repository.dart';
 import 'data/repositories/play_history_repository.dart';
@@ -21,6 +20,7 @@ import 'data/services/file_service.dart';
 import 'data/services/online_api_service.dart';
 import 'data/services/audio_service.dart';
 import 'data/services/thumbnail_service.dart';
+import 'core/utils/route_observer.dart';
 import 'core/theme/app_theme.dart';
 import 'ui/pages/splash_page.dart';
 
@@ -53,7 +53,7 @@ class App extends StatelessWidget {
         ChangeNotifierProvider(create: (_) => VideoPlayerProvider()),
         ChangeNotifierProvider(create: (_) => FavoriteProvider(FavoriteRepository(storage))),
         ChangeNotifierProvider(create: (_) => DanmakuProvider()),
-        ChangeNotifierProvider(create: (_) => SearchProvider(SearchRepository(storage), VideoRepository(_fileService))),
+        ChangeNotifierProvider(create: (_) => SearchProvider(SearchRepository(storage))),
         ChangeNotifierProvider(create: (_) => BeautyProvider(_fileService, _audioService)),
         ChangeNotifierProvider(create: (_) => OnlineProvider(_onlineApiService)),
         ChangeNotifierProvider(create: (_) => TimerProvider(storage)),
@@ -69,6 +69,7 @@ class App extends StatelessWidget {
           darkTheme: AppTheme.darkTheme,
           themeMode: _parseThemeMode(cp.config.themeMode),
           home: const SplashPage(),
+          navigatorObservers: [appRouteObserver],
           debugShowCheckedModeBanner: false,
         ),
       ),

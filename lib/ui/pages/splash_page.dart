@@ -12,8 +12,10 @@ import '../../core/utils/tutorial_util.dart';
 import '../../core/utils/page_transitions.dart';
 import 'password_page.dart';
 import 'video_player_page.dart';
+import 'long_video_player_page.dart';
 import 'beauty_page.dart';
 import 'online_page.dart';
+import 'settings_page.dart';
 
 class SplashPage extends StatefulWidget {
   const SplashPage({super.key});
@@ -37,17 +39,30 @@ class _SplashPageState extends State<SplashPage> with TickerProviderStateMixin {
       vsync: this,
       duration: AppTheme.durSlow,
     );
-    _logoScale = CurvedAnimation(parent: _logoController, curve: AppTheme.curveEmphasized);
-    _logoOpacity = CurvedAnimation(parent: _logoController, curve: const Interval(0.2, 1.0, curve: AppTheme.curveEmphasized));
+    _logoScale = CurvedAnimation(
+      parent: _logoController,
+      curve: AppTheme.curveEmphasized,
+    );
+    _logoOpacity = CurvedAnimation(
+      parent: _logoController,
+      curve: const Interval(0.2, 1.0, curve: AppTheme.curveEmphasized),
+    );
 
     _cardsController = AnimationController(
       vsync: this,
       duration: AppTheme.durSlow,
     );
-    _cardsOpacity = CurvedAnimation(parent: _cardsController, curve: AppTheme.curveEmphasized);
-    _cardsOffset = Tween<Offset>(begin: const Offset(0, 0.1), end: Offset.zero).animate(
-      CurvedAnimation(parent: _cardsController, curve: AppTheme.curveEmphasized),
+    _cardsOpacity = CurvedAnimation(
+      parent: _cardsController,
+      curve: AppTheme.curveEmphasized,
     );
+    _cardsOffset = Tween<Offset>(begin: const Offset(0, 0.1), end: Offset.zero)
+        .animate(
+          CurvedAnimation(
+            parent: _cardsController,
+            curve: AppTheme.curveEmphasized,
+          ),
+        );
 
     WidgetsBinding.instance.addPostFrameCallback((_) async {
       _logoController.forward();
@@ -79,9 +94,12 @@ class _SplashPageState extends State<SplashPage> with TickerProviderStateMixin {
   }
 
   void _safeInit(Future<void> Function() init) {
-    init().then((_) {}, onError: (e) {
-      debugPrint('Provider初始化失败: $e');
-    });
+    init().then(
+      (_) {},
+      onError: (e) {
+        debugPrint('Provider初始化失败: $e');
+      },
+    );
   }
 
   void _checkStartupMode() {
@@ -94,13 +112,28 @@ class _SplashPageState extends State<SplashPage> with TickerProviderStateMixin {
   void _navigateToMode(String mode) {
     switch (mode) {
       case 'video':
-        Navigator.pushReplacement(context, MaterialPageRoute(builder: (_) => const VideoPlayerPage()));
+        Navigator.pushReplacement(
+          context,
+          MaterialPageRoute(builder: (_) => const VideoPlayerPage()),
+        );
+        break;
+      case 'longvideo':
+        Navigator.pushReplacement(
+          context,
+          MaterialPageRoute(builder: (_) => const LongVideoPlayerPage()),
+        );
         break;
       case 'beauty':
-        Navigator.pushReplacement(context, MaterialPageRoute(builder: (_) => const BeautyPage()));
+        Navigator.pushReplacement(
+          context,
+          MaterialPageRoute(builder: (_) => const BeautyPage()),
+        );
         break;
       case 'online':
-        Navigator.pushReplacement(context, MaterialPageRoute(builder: (_) => const OnlinePage()));
+        Navigator.pushReplacement(
+          context,
+          MaterialPageRoute(builder: (_) => const OnlinePage()),
+        );
         break;
     }
   }
@@ -123,13 +156,19 @@ class _SplashPageState extends State<SplashPage> with TickerProviderStateMixin {
           SafeArea(
             child: Center(
               child: SingleChildScrollView(
-                padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 32),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 24,
+                  vertical: 32,
+                ),
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
                   children: [
                     // Logo + 标题 (入场缩放)
                     ScaleTransition(
-                      scale: Tween<double>(begin: 0.7, end: 1.0).animate(_logoScale),
+                      scale: Tween<double>(
+                        begin: 0.7,
+                        end: 1.0,
+                      ).animate(_logoScale),
                       child: FadeTransition(
                         opacity: _logoOpacity,
                         child: Column(
@@ -142,12 +181,22 @@ class _SplashPageState extends State<SplashPage> with TickerProviderStateMixin {
                                 gradient: AppTheme.primaryGradient,
                                 boxShadow: AppTheme.shadowGlow,
                               ),
-                              child: Icon(Icons.play_arrow_rounded, color: colorScheme.onPrimary, size: 56),
+                              child: Icon(
+                                Icons.play_arrow_rounded,
+                                color: colorScheme.onPrimary,
+                                size: 56,
+                              ),
                             ),
                             const SizedBox(height: 20),
-                            Text('小抖音', style: Theme.of(context).textTheme.displayMedium),
+                            Text(
+                              '小抖音',
+                              style: Theme.of(context).textTheme.displayMedium,
+                            ),
                             const SizedBox(height: 8),
-                            Text('选择模式开始', style: Theme.of(context).textTheme.bodyMedium),
+                            Text(
+                              '选择模式开始',
+                              style: Theme.of(context).textTheme.bodyMedium,
+                            ),
                           ],
                         ),
                       ),
@@ -162,10 +211,22 @@ class _SplashPageState extends State<SplashPage> with TickerProviderStateMixin {
                           children: [
                             _ModeCard(
                               icon: Icons.movie_outlined,
-                              title: '视频模式',
+                              title: '短视频模式',
                               subtitle: '本地视频 / 沉浸式播放',
                               color: colorScheme.primary,
-                              onTap: () => _enterMode('video', config.videoModePassword),
+                              onTap: () =>
+                                  _enterMode('video', config.videoModePassword),
+                            ),
+                            const SizedBox(height: 14),
+                            _ModeCard(
+                              icon: Icons.smart_display_outlined,
+                              title: '长视频模式',
+                              subtitle: '单核播放 / 播放列表',
+                              color: colorScheme.primary,
+                              onTap: () => _enterMode(
+                                'longvideo',
+                                config.videoModePassword,
+                              ),
                             ),
                             const SizedBox(height: 14),
                             _ModeCard(
@@ -173,7 +234,10 @@ class _SplashPageState extends State<SplashPage> with TickerProviderStateMixin {
                               title: '美图模式',
                               subtitle: '本地图片 / 音乐匹配',
                               color: colorScheme.tertiary,
-                              onTap: () => _enterMode('beauty', config.beautyModePassword),
+                              onTap: () => _enterMode(
+                                'beauty',
+                                config.beautyModePassword,
+                              ),
                             ),
                             const SizedBox(height: 14),
                             _ModeCard(
@@ -181,18 +245,42 @@ class _SplashPageState extends State<SplashPage> with TickerProviderStateMixin {
                               title: '在线模式',
                               subtitle: '在线视频 / 在线图片',
                               color: colorScheme.secondary,
-                              onTap: () => _enterMode('online', config.onlineModePassword),
+                              onTap: () => _enterMode(
+                                'online',
+                                config.onlineModePassword,
+                              ),
                             ),
                           ],
                         ),
                       ),
                     ),
                     const SizedBox(height: 32),
-                    TextButton.icon(
-                      onPressed: () => showTutorialDialog(context),
-                      icon: const Icon(Icons.help_outline, size: 18),
-                      label: const Text('操作教程'),
-                      style: TextButton.styleFrom(foregroundColor: colorScheme.onSurfaceVariant),
+                    Wrap(
+                      alignment: WrapAlignment.center,
+                      spacing: 4,
+                      children: [
+                        TextButton.icon(
+                          onPressed: () => showTutorialDialog(context),
+                          icon: const Icon(Icons.help_outline, size: 18),
+                          label: const Text('操作教程'),
+                          style: TextButton.styleFrom(
+                            foregroundColor: colorScheme.onSurfaceVariant,
+                          ),
+                        ),
+                        TextButton.icon(
+                          onPressed: () => Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                              builder: (_) => const SettingsPage(),
+                            ),
+                          ),
+                          icon: const Icon(Icons.settings_outlined, size: 18),
+                          label: const Text('全局设置'),
+                          style: TextButton.styleFrom(
+                            foregroundColor: colorScheme.onSurfaceVariant,
+                          ),
+                        ),
+                      ],
                     ),
                   ],
                 ),
@@ -267,9 +355,15 @@ class _ModeCardState extends State<_ModeCard> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text(widget.title, style: Theme.of(context).textTheme.titleMedium),
+                    Text(
+                      widget.title,
+                      style: Theme.of(context).textTheme.titleMedium,
+                    ),
                     const SizedBox(height: 2),
-                    Text(widget.subtitle, style: Theme.of(context).textTheme.bodySmall),
+                    Text(
+                      widget.subtitle,
+                      style: Theme.of(context).textTheme.bodySmall,
+                    ),
                   ],
                 ),
               ),

@@ -4,14 +4,15 @@ import '../../core/constants/storage_keys.dart';
 
 class FavoriteRepository {
   final StorageService _storage;
+  final String storageKey;
   List<FavoriteItem> _favorites = [];
 
-  FavoriteRepository(this._storage);
+  FavoriteRepository(this._storage, {this.storageKey = StorageKeys.favoriteVideos});
 
   List<FavoriteItem> get favorites => _favorites;
 
   Future<void> load() async {
-    final json = _storage.getJson(StorageKeys.favoriteVideos);
+    final json = _storage.getJson(storageKey);
     if (json != null) {
       final list = json['items'] as List? ?? [];
       _favorites = list.map((e) => FavoriteItem.fromJson(e as Map<String, dynamic>)).toList();
@@ -19,7 +20,7 @@ class FavoriteRepository {
   }
 
   Future<void> _save() async {
-    await _storage.setJson(StorageKeys.favoriteVideos, {
+    await _storage.setJson(storageKey, {
       'items': _favorites.map((e) => e.toJson()).toList(),
     });
   }
@@ -37,6 +38,13 @@ class FavoriteRepository {
 
   bool isFavorite(String filePath) =>
       _favorites.any((f) => f.filePath == filePath);
+
+  /// 移除单个收藏项（文件被删除时清理失效收藏）
+  Future<void> remove(String filePath) async {
+    final before = _favorites.length;
+    _favorites.removeWhere((f) => f.filePath == filePath);
+    if (_favorites.length != before) await _save();
+  }
 
   Future<void> calibrate(List<String> existingPaths) async {
     final pathSet = existingPaths.toSet();

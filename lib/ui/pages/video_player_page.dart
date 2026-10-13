@@ -14,6 +14,7 @@ import 'package:window_manager/window_manager.dart';
 import '../../core/utils/path_utils.dart';
 import '../../core/utils/platform_utils.dart';
 import '../../core/theme/app_theme.dart';
+import '../../core/theme/text_effects.dart';
 import '../gestures/desktop_shortcuts.dart';
 import '../widgets/modern_progress_bar.dart' as modern;
 import '../widgets/danmaku_settings_sheet.dart';
@@ -32,6 +33,7 @@ import '../../data/models/app_config.dart';
 import '../../core/utils/toast_util.dart';
 import '../../core/constants/app_constants.dart';
 import '../../core/constants/storage_keys.dart';
+import '../../core/utils/route_observer.dart';
 import '../widgets/danmaku_overlay.dart';
 import '../widgets/favorite_button.dart';
 import '../widgets/real_time_counter.dart';
@@ -41,6 +43,7 @@ import '../widgets/playback_gesture_detector.dart';
 import 'video_list_page.dart';
 import 'notebook_page.dart';
 import 'settings_page.dart';
+import 'video_settings_page.dart';
 
 class VideoPlayerPage extends StatefulWidget {
   const VideoPlayerPage({super.key});
@@ -50,12 +53,12 @@ class VideoPlayerPage extends StatefulWidget {
 }
 
 class _VideoPlayerPageState extends State<VideoPlayerPage>
-    with WidgetsBindingObserver, WindowListener implements PlayerShortcutHandler {
-  // --- LRU 播放器缓存 ---
+    with WidgetsBindingObserver, WindowListener, RouteAware implements PlayerShortcutHandler {
+  // --- LRU 播放器缓存（以视频路径为 key，列表变更/切模式后不会错位复用）---
   static const int _maxCacheSize = 3;
-  final Map<int, _VideoPlayerEntry> _playerCache = {};
-  final List<int> _accessOrder = [];
-  final Set<int> _disposingPlayers = {};
+  final Map<String, _VideoPlayerEntry> _playerCache = {};
+  final List<String> _accessOrder = [];
+  final Set<String> _disposingPlayers = {};
 
   // --- 控制器 ---
   final PreloadPageController _pageController = PreloadPageController();
@@ -69,6 +72,14 @@ class _VideoPlayerPageState extends State<VideoPlayerPage>
   StreamSubscription<bool>? _completedSubscription;
   late final ResumeProvider _resumeProvider;
 
+  // --- 路由挂起 (被上层页面覆盖时释放播放器,重新露出时按记忆位置重建) ---
+  Route? _observedRoute;
+  bool _isSuspended = false;
+  String? _suspendedPath;
+  Duration? _suspendedPosition;
+  bool _suspendedWasPlaying = false;
+  Timer? _suspendTimer;
+
   // --- 双击红心动画 ---
   final List<_LikeAnimation> _likeAnimations = [];
   int _likeAnimationIdCounter = 0;
@@ -80,13 +91,13 @@ class _VideoPlayerPageState extends State<VideoPlayerPage>
   // 鼠标位置 (用于桌面端检测)
   Offset? _lastMousePos;
 
-  // --- 长视频模式 ---
-  // _isLongVideoMode: 当前 UI 显示状态
-  // _longVideoOverride: 用户手动选择 (true=强制开, false=强制关, null=自动检测)
+  // --- 横屏控制条布局 ---
+  // _isImmersiveLayout: 当前 UI 显示状态
+  // _immersiveLayoutOverride: 用户手动选择 (true=强制开, false=强制关, null=自动检测)
   //                      持久化到 SharedPreferences,关闭 App 后保留
-  bool _isLongVideoMode = false;
-  bool? _longVideoOverride;
-  static const Duration _longVideoThreshold = Duration(minutes: 5);
+  bool _isImmersiveLayout = false;
+  bool? _immersiveLayoutOverride;
+  static const Duration _immersiveLayoutThreshold = Duration(minutes: 5);
 
   // --- 音量 (桌面端) ---
   double _volume = 100;
@@ -102,6 +113,17 @@ class _VideoPlayerPageState extends State<VideoPlayerPage>
       windowManager.addListener(this);
     }
     _loadVideos();
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    final route = ModalRoute.of(context);
+    if (route is PageRoute && route != _observedRoute) {
+      appRouteObserver.unsubscribe(this);
+      appRouteObserver.subscribe(this, route);
+      _observedRoute = route;
+    }
   }
 
   @override
@@ -125,25 +147,27 @@ class _VideoPlayerPageState extends State<VideoPlayerPage>
     }
   }
 
-  /// 异步加载用户长视频模式偏好 (在 _loadVideos 开头调用,确保首屏渲染前完成)
-  Future<void> _loadLongVideoOverrideAsync() async {
+  /// 异步加载用户横屏布局偏好 (在 _loadVideos 开头调用,确保首屏渲染前完成)
+  Future<void> _loadImmersiveLayoutOverrideAsync() async {
     final storage = await StorageService.getInstance();
-    if (!storage.containsKey(StorageKeys.longVideoModeOverride)) {
-      _longVideoOverride = null;
+    if (!storage.containsKey(StorageKeys.immersiveLayoutOverride)) {
+      _immersiveLayoutOverride = null;
       return;
     }
-    _longVideoOverride = storage.getBool(StorageKeys.longVideoModeOverride);
+    _immersiveLayoutOverride = storage.getBool(StorageKeys.immersiveLayoutOverride);
   }
 
-  /// 保存用户长视频模式偏好
-  Future<void> _saveLongVideoOverride(bool value) async {
-    _longVideoOverride = value;
+  /// 保存用户横屏布局偏好
+  Future<void> _saveImmersiveLayoutOverride(bool value) async {
+    _immersiveLayoutOverride = value;
     final storage = await StorageService.getInstance();
-    await storage.setBool(StorageKeys.longVideoModeOverride, value);
+    await storage.setBool(StorageKeys.immersiveLayoutOverride, value);
   }
 
   @override
   void dispose() {
+    appRouteObserver.unsubscribe(this);
+    _suspendTimer?.cancel();
     WidgetsBinding.instance.removeObserver(this);
     if (PlatformUtils.isDesktop) {
       windowManager.removeListener(this);
@@ -165,15 +189,97 @@ class _VideoPlayerPageState extends State<VideoPlayerPage>
     if (!_isAppActive && wasActive) {
       _pauseAllPlayers();
     } else if (_isAppActive && !wasActive) {
-      _playPlayer(_currentPageIndex);
+      final path = _currentPath;
+      if (path != null) _playPlayer(path);
     }
+  }
+
+  // ==================== 路由挂起 ====================
+
+  /// 被上层页面（视频列表、设置等）完全覆盖：等转场动画结束再释放全部播放器，
+  /// 否则本页在滑出过程中会先变成黑屏。
+  @override
+  void didPushNext() {
+    _suspendTimer?.cancel();
+    _suspendTimer = Timer(const Duration(milliseconds: 400), _suspendPlayback);
+  }
+
+  /// 上层页面 pop 回来：重建当前页播放器并恢复到挂起前的位置
+  @override
+  void didPopNext() {
+    _suspendTimer?.cancel();
+    _suspendTimer = null;
+    _resumePlayback();
+  }
+
+  void _suspendPlayback() {
+    if (_isSuspended) return;
+    final path = _currentPath;
+    if (path == null) return;
+
+    final entry = _playerCache[path];
+    _suspendedPath = path;
+    _suspendedPosition = entry?.player.state.position;
+    _suspendedWasPlaying = _isPlaying;
+    _isSuspended = true;
+
+    _playingSubscription?.cancel();
+    _completedSubscription?.cancel();
+    _uiHideTimer?.cancel();
+    _resumeProvider.stopAutoSave();
+    _pauseAllPlayers();
+    _disposeAllPlayers();
+    if (mounted) {
+      setState(() => _isPlaying = false);
+    }
+  }
+
+  Future<void> _resumePlayback() async {
+    if (!_isSuspended) return;
+    final path = _suspendedPath;
+    final position = _suspendedPosition;
+    final wasPlaying = _suspendedWasPlaying;
+    _isSuspended = false;
+    _suspendedPath = null;
+    _suspendedPosition = null;
+    _suspendedWasPlaying = false;
+
+    if (path == null) {
+      if (mounted) setState(() {});
+      return;
+    }
+
+    await _managePlayerWindow(_currentPageIndex, context.read<VideoPlayerProvider>().displayPathList);
+    if (!mounted) return;
+    _playPlayer(path);
+    final entry = _playerCache[path];
+    if (entry == null) return;
+    if (!wasPlaying) entry.player.pause();
+
+    if (position != null && position > Duration.zero) {
+      // 与首屏续播一致：等播放器真正开始播放后再跳转，否则 seek 会被 open 覆盖
+      entry.player.stream.playing
+          .firstWhere((p) => p)
+          .timeout(const Duration(seconds: 5), onTimeout: () => false)
+          .then((playing) {
+        if (mounted && playing) entry.player.seek(position);
+      });
+    }
+
+    _resumeProvider.startAutoSave(
+      path,
+      () => entry.player.state.position,
+      () => entry.player.state.duration,
+    );
+    _resetUiHideTimer();
+    if (mounted) setState(() {});
   }
 
   // ==================== 视频加载 ====================
 
   Future<void> _loadVideos() async {
-    // 先加载长视频模式用户偏好,避免首屏闪烁
-    await _loadLongVideoOverrideAsync();
+    // 先加载横屏布局用户偏好,避免首屏闪烁
+    await _loadImmersiveLayoutOverrideAsync();
     if (!mounted) return;
     final config = context.read<ConfigProvider>().config;
     final fileService = FileService(customVideoDir: config.customVideoDir);
@@ -184,7 +290,7 @@ class _VideoPlayerPageState extends State<VideoPlayerPage>
     if (videos.isNotEmpty) {
       provider.setVideoList(videos);
       // 初始化第一个视频的播放器
-      await _initAndPlayVideo(0, videos[0].path);
+      await _initAndPlayVideo(videos[0].path);
     } else {
       // 确保清空空列表状态
       provider.setVideoList([]);
@@ -193,25 +299,43 @@ class _VideoPlayerPageState extends State<VideoPlayerPage>
 
   // ==================== 播放器管理 ====================
 
-  _VideoPlayerEntry? _getOrCreatePlayer(int index, String path) {
-    if (_playerCache.containsKey(index)) {
-      _touchPlayer(index);
-      return _playerCache[index]!;
+  /// 当前页对应的视频路径（列表变更后自动跟随，不再依赖过期的 index）
+  String? get _currentPath {
+    final pathList = context.read<VideoPlayerProvider>().displayPathList;
+    if (_currentPageIndex < 0 || _currentPageIndex >= pathList.length) return null;
+    return pathList[_currentPageIndex];
+  }
+
+  _VideoPlayerEntry? get _currentEntry {
+    final path = _currentPath;
+    return path == null ? null : _playerCache[path];
+  }
+
+  _VideoPlayerEntry? _getOrCreatePlayer(String path) {
+    if (_playerCache.containsKey(path)) {
+      _touchPlayer(path);
+      return _playerCache[path]!;
     }
 
     try {
       final player = Player(configuration: const PlayerConfiguration());
       final controller = VideoController(player);
-      _playerCache[index] = _VideoPlayerEntry(player, controller);
-      _touchPlayer(index);
+      final entry = _VideoPlayerEntry(player, controller);
+      _playerCache[path] = entry;
+      _touchPlayer(path);
+      entry.errorSubscription = player.stream.error.listen((message) {
+        if (!mounted) return;
+        setState(() => entry.error = message.isEmpty ? null : message);
+      });
       player.open(Media(path));
       // 关键：open后立即暂停，防止预加载页自动播放产生多音频
       player.pause();
       // 加载字幕：同目录同名字幕 + 内封字幕
       _loadSubtitles(player, path);
       _enforceCacheLimit();
-      return _playerCache[index]!;
+      return entry;
     } catch (e) {
+      debugPrint('创建播放器失败 path=$path: $e');
       return null;
     }
   }
@@ -253,59 +377,62 @@ class _VideoPlayerPageState extends State<VideoPlayerPage>
     }
   }
 
-  void _touchPlayer(int index) {
+  void _touchPlayer(String path) {
     _accessOrder
-      ..remove(index)
-      ..add(index);
+      ..remove(path)
+      ..add(path);
   }
 
   void _enforceCacheLimit() {
     while (_playerCache.length > _maxCacheSize && _accessOrder.isNotEmpty) {
-      final oldestIndex = _accessOrder.first;
-      _removePlayer(oldestIndex);
+      _removePlayer(_accessOrder.first);
     }
   }
 
   Future<void> _managePlayerWindow(int currentPage, List<String> pathList) async {
+    if (pathList.isEmpty) return;
     final windowStart = (currentPage - 1).clamp(0, pathList.length - 1);
     final windowEnd = (currentPage + 1).clamp(0, pathList.length - 1);
+    final windowPaths = pathList.sublist(windowStart, windowEnd + 1).toSet();
 
-    final indicesToRemove = _playerCache.keys
-        .where((i) => i < windowStart || i > windowEnd)
+    final pathsToRemove = _playerCache.keys
+        .where((path) => !windowPaths.contains(path))
         .toList();
-    for (final i in indicesToRemove) {
-      _removePlayer(i);
+    for (final path in pathsToRemove) {
+      _removePlayer(path);
     }
 
     if (currentPage < pathList.length) {
-      _getOrCreatePlayer(currentPage, pathList[currentPage]);
+      _getOrCreatePlayer(pathList[currentPage]);
       if (windowStart < currentPage) {
-        _getOrCreatePlayer(windowStart, pathList[windowStart]);
+        _getOrCreatePlayer(pathList[windowStart]);
       }
       if (windowEnd > currentPage) {
-        _getOrCreatePlayer(windowEnd, pathList[windowEnd]);
+        _getOrCreatePlayer(pathList[windowEnd]);
       }
     }
   }
 
-  void _removePlayer(int index) {
-    if (_disposingPlayers.contains(index)) return;
-    _disposingPlayers.add(index);
+  void _removePlayer(String path) {
+    if (_disposingPlayers.contains(path)) return;
+    _disposingPlayers.add(path);
 
     try {
-      final entry = _playerCache.remove(index);
-      _accessOrder.remove(index);
+      final entry = _playerCache.remove(path);
+      _accessOrder.remove(path);
       if (entry != null) {
+        entry.errorSubscription?.cancel();
         try { entry.player.pause(); } catch (_) {}
         entry.player.dispose();
       }
     } finally {
-      _disposingPlayers.remove(index);
+      _disposingPlayers.remove(path);
     }
   }
 
   void _disposeAllPlayers() {
     for (final entry in _playerCache.values) {
+      entry.errorSubscription?.cancel();
       try { entry.player.dispose(); } catch (_) {}
     }
     _playerCache.clear();
@@ -319,8 +446,8 @@ class _VideoPlayerPageState extends State<VideoPlayerPage>
     }
   }
 
-  void _playPlayer(int index) {
-    final entry = _playerCache[index];
+  void _playPlayer(String path) {
+    final entry = _playerCache[path];
     if (entry != null) {
       try {
         entry.player.play();
@@ -342,9 +469,12 @@ class _VideoPlayerPageState extends State<VideoPlayerPage>
       // 应用音量
       entry.player.setVolume(_volume);
     }
-    // 异步检测长视频模式
+    // 倍速与音量一样跨页继承（对未缓存的路径会在下次播放时生效）
+    final rate = context.read<VideoPlayerProvider>().playbackRate;
+    if (rate != 1.0) _playerCache[path]?.player.setRate(rate);
+    // 异步检测横屏布局
     Future.delayed(const Duration(milliseconds: 500), () {
-      if (mounted) _checkLongVideoMode();
+      if (mounted) _checkImmersiveLayout();
     });
   }
 
@@ -366,21 +496,22 @@ class _VideoPlayerPageState extends State<VideoPlayerPage>
         _pageController.jumpToPage(nextIndex);
         break;
       case PlayMode.normal:
-        // 播完即停: 暂停,显示重播按钮
+        // 播完即停: 回到开头并暂停，再次点击屏幕即可从头重播
         player.pause();
+        player.seek(Duration.zero);
         setState(() => _isPlaying = false);
         ToastUtil.show(context, '播放完成');
         break;
     }
   }
 
-  Future<void> _initAndPlayVideo(int index, String path) async {
-    _getOrCreatePlayer(index, path);
-    _playPlayer(index);
+  Future<void> _initAndPlayVideo(String path) async {
+    _getOrCreatePlayer(path);
+    _playPlayer(path);
     // 续播：获取上次播放位置并跳转
     final resumePos = context.read<ResumeProvider>().getResumePosition(path);
     if (resumePos != null && resumePos.inSeconds > 0) {
-      final entry = _playerCache[index];
+      final entry = _playerCache[path];
       if (entry != null) {
         // 等待播放器实际开始播放后再跳转（5秒超时保护）
         final sub = entry.player.stream.playing.firstWhere((p) => p)
@@ -391,7 +522,7 @@ class _VideoPlayerPageState extends State<VideoPlayerPage>
       }
     }
     // 启动自动保存播放进度
-    final entry = _playerCache[index];
+    final entry = _playerCache[path];
     if (entry != null) {
       context.read<ResumeProvider>().startAutoSave(
         path,
@@ -417,29 +548,30 @@ class _VideoPlayerPageState extends State<VideoPlayerPage>
     _pauseAllPlayers();
 
     // 2. 快速滑动：激进销毁非目标页播放器
+    final pathList = vp.displayPathList;
     if (isFastScroll) {
-      final indicesToRemove = _playerCache.keys
-          .where((i) => i != newIndex)
+      final targetPath = newIndex < pathList.length ? pathList[newIndex] : null;
+      final pathsToRemove = _playerCache.keys
+          .where((path) => path != targetPath)
           .toList();
-      for (final i in indicesToRemove) {
-        _removePlayer(i);
+      for (final path in pathsToRemove) {
+        _removePlayer(path);
       }
     }
 
     // 3. 管理滑动窗口（预加载页创建后处于暂停状态）
-    final pathList = vp.displayPathList;
     await _managePlayerWindow(newIndex, pathList);
     if (!mounted) return;
 
     // 4. 仅播放当前视频（预加载页保持暂停）
-    _playPlayer(newIndex);
+    _playPlayer(pathList[newIndex]);
 
     // 5. 通知 provider 更新当前索引（仅更新索引，不操作player避免双重播放）
     vp.updateCurrentIndex(newIndex);
 
     // 6. 更新续播自动保存目标
     if (newIndex < vp.displayList.length) {
-      final newEntry = _playerCache[newIndex];
+      final newEntry = _playerCache[pathList[newIndex]];
       if (newEntry != null) {
         context.read<ResumeProvider>().startAutoSave(
           vp.displayList[newIndex].path,
@@ -453,7 +585,7 @@ class _VideoPlayerPageState extends State<VideoPlayerPage>
   }
 
   void _togglePlayPause() {
-    final entry = _playerCache[_currentPageIndex];
+    final entry = _currentEntry;
     if (entry != null) {
       entry.player.playOrPause();
       // _isPlaying 由 player.stream.playing 监听自动同步，无需手动设置
@@ -510,20 +642,20 @@ class _VideoPlayerPageState extends State<VideoPlayerPage>
     _resetUiHideTimer();
   }
 
-  /// 检测当前视频是否为长视频 (duration >= 5 min)
-  /// 如果用户已手动设置覆盖 (_longVideoOverride != null),以用户选择为准
-  void _checkLongVideoMode() {
-    final entry = _playerCache[_currentPageIndex];
+  /// 检测当前视频是否应使用横屏布局 (duration >= 5 min 或宽屏)
+  /// 如果用户已手动设置覆盖 (_immersiveLayoutOverride != null),以用户选择为准
+  void _checkImmersiveLayout() {
+    final entry = _currentEntry;
     if (entry == null) return;
     final duration = entry.player.state.duration;
     final width = entry.player.state.width ?? 0;
     final height = entry.player.state.height ?? 0;
     final isWideAspect = width > 0 && height > 0 && (width / height) > 1.0;
-    final autoDetected = duration >= _longVideoThreshold || isWideAspect;
+    final autoDetected = duration >= _immersiveLayoutThreshold || isWideAspect;
     // 优先使用用户手动选择,否则使用自动检测
-    final target = _longVideoOverride ?? autoDetected;
-    if (target != _isLongVideoMode && mounted) {
-      setState(() => _isLongVideoMode = target);
+    final target = _immersiveLayoutOverride ?? autoDetected;
+    if (target != _isImmersiveLayout && mounted) {
+      setState(() => _isImmersiveLayout = target);
     }
   }
 
@@ -534,7 +666,7 @@ class _VideoPlayerPageState extends State<VideoPlayerPage>
 
   @override
   void seek(Duration delta) {
-    final entry = _playerCache[_currentPageIndex];
+    final entry = _currentEntry;
     if (entry == null) return;
     final cur = entry.player.state.position;
     final dur = entry.player.state.duration;
@@ -547,7 +679,7 @@ class _VideoPlayerPageState extends State<VideoPlayerPage>
 
   @override
   void seekToFraction(double fraction) {
-    final entry = _playerCache[_currentPageIndex];
+    final entry = _currentEntry;
     if (entry == null) return;
     final dur = entry.player.state.duration;
     entry.player.seek(Duration(milliseconds: (fraction * dur.inMilliseconds).round()));
@@ -559,7 +691,7 @@ class _VideoPlayerPageState extends State<VideoPlayerPage>
       _volume = (_volume + delta).clamp(0.0, 100.0);
       if (_volume > 0) _lastNonZeroVolume = _volume;
     });
-    final entry = _playerCache[_currentPageIndex];
+    final entry = _currentEntry;
     entry?.player.setVolume(_volume);
   }
 
@@ -573,7 +705,7 @@ class _VideoPlayerPageState extends State<VideoPlayerPage>
         _volume = _lastNonZeroVolume;
       }
     });
-    final entry = _playerCache[_currentPageIndex];
+    final entry = _currentEntry;
     entry?.player.setVolume(_volume);
   }
 
@@ -696,7 +828,9 @@ class _VideoPlayerPageState extends State<VideoPlayerPage>
           }
 
           final pathList = vp.displayPathList;
-          final saturation = context.watch<ConfigProvider>().config.saturation;
+          final config = context.watch<ConfigProvider>().config;
+          final saturation = config.saturation;
+          final fit = _boxFitOf(config.videoFit);
 
           return Stack(
             children: [
@@ -709,11 +843,11 @@ class _VideoPlayerPageState extends State<VideoPlayerPage>
                 preloadPagesCount: 1,
                 onPageChanged: (i) {
                   _onPageChanged(i);
-                  _checkLongVideoMode();
+                  _checkImmersiveLayout();
                 },
                 itemBuilder: (context, index) {
                   return RepaintBoundary(
-                    child: _buildVideoPage(index, pathList[index], saturation),
+                    child: _buildVideoPage(index, pathList[index], saturation, fit),
                   );
                 },
               ),
@@ -721,23 +855,23 @@ class _VideoPlayerPageState extends State<VideoPlayerPage>
               // UI叠加层 (非手势模式时显示，自动隐藏)
               if (!vp.isGestureMode)
                 AnimatedOpacity(
-                  opacity: _isUiVisible ? 1.0 : 0.0,
+                  opacity: _isUiVisible ? config.uiOpacity : 0.0,
                   duration: const Duration(milliseconds: 300),
                   child: IgnorePointer(
                     ignoring: !_isUiVisible,
                     child: Stack(
                       children: [
                         _buildTopBar(vp),
-                        if (_isLongVideoMode) _buildLongVideoControlBar(vp) else _buildBottomBar(vp),
-                        if (!_isLongVideoMode) _buildRightActionBar(vp),
+                        if (_isImmersiveLayout) _buildImmersiveControlBar(vp) else _buildBottomBar(vp),
+                        if (!_isImmersiveLayout) _buildRightActionBar(vp),
                         const Positioned(top: 60, right: 12, child: TimerDisplay()),
                       ],
                     ),
                   ),
                 ),
 
-              // 长视频模式: 中央播放/暂停 (显示时点击隐藏)
-              if (_isLongVideoMode && !vp.isGestureMode)
+              // 横屏布局: 中央播放/暂停 (显示时点击隐藏)
+              if (_isImmersiveLayout && !vp.isGestureMode)
                 Center(
                   child: AnimatedOpacity(
                     duration: AppTheme.durMedium,
@@ -793,9 +927,9 @@ class _VideoPlayerPageState extends State<VideoPlayerPage>
     return body;
   }
 
-  /// 长视频模式底部控制条 (类似 YouTube/Bilibili)
-  Widget _buildLongVideoControlBar(VideoPlayerProvider vp) {
-    final currentEntry = _playerCache[_currentPageIndex];
+  /// 横屏布局底部控制条 (类似 YouTube/Bilibili)
+  Widget _buildImmersiveControlBar(VideoPlayerProvider vp) {
+    final currentEntry = _currentEntry;
     final config = context.watch<ConfigProvider>().config;
 
     return Positioned(
@@ -836,14 +970,12 @@ class _VideoPlayerPageState extends State<VideoPlayerPage>
                               overflow: TextOverflow.ellipsis,
                             ),
                           ),
-                        Text(
-                          vp.currentVideo!.fileName,
-                          style: TextStyle(
-                            color: Colors.white.withValues(alpha: 0.85),
-                            fontSize: config.fontSize,
-                          ),
+                        TextEffects.build(
+                          text: vp.currentVideo!.fileName,
+                          effectType: config.textEffect,
+                          textColor: config.textColor,
+                          fontSize: config.fontSize,
                           maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
                         ),
                       ],
                     ),
@@ -893,7 +1025,7 @@ class _VideoPlayerPageState extends State<VideoPlayerPage>
   }
 
   void _showVolumeSlider() {
-    final currentEntry = _playerCache[_currentPageIndex];
+    final currentEntry = _currentEntry;
     if (currentEntry == null) return;
     final colorScheme = Theme.of(context).colorScheme;
 
@@ -1021,8 +1153,38 @@ class _VideoPlayerPageState extends State<VideoPlayerPage>
     return Icons.volume_up_rounded;
   }
 
-  Widget _buildVideoPage(int index, String path, double saturation) {
-    final entry = _getOrCreatePlayer(index, path);
+  static BoxFit _boxFitOf(VideoFitMode mode) {
+    switch (mode) {
+      case VideoFitMode.cover:
+        return BoxFit.cover;
+      case VideoFitMode.fitWidth:
+        return BoxFit.fitWidth;
+      case VideoFitMode.fitHeight:
+        return BoxFit.fitHeight;
+      case VideoFitMode.contain:
+        return BoxFit.contain;
+    }
+  }
+
+  Widget _buildVideoLayerBody(_VideoPlayerEntry? entry, double saturation, BoxFit fit) {
+    if (entry == null) {
+      return const Center(child: CircularProgressIndicator(color: Colors.white));
+    }
+    return _buildVideoWithSaturation(
+      Video(
+        controller: entry.controller,
+        fit: fit,
+        controls: NoVideoControls,
+        subtitleViewConfiguration: const SubtitleViewConfiguration(visible: true),
+      ),
+      saturation,
+    );
+  }
+
+  Widget _buildVideoPage(int index, String path, double saturation, BoxFit fit) {
+    // 挂起期间不重建播放器，否则刚释放的实例会立刻被 build 创建回来
+    if (_isSuspended) return const SizedBox.expand();
+    final entry = _getOrCreatePlayer(path);
     final isCurrentPage = index == _currentPageIndex;
 
     // 非当前页不渲染Video widget，节省GPU资源
@@ -1033,28 +1195,25 @@ class _VideoPlayerPageState extends State<VideoPlayerPage>
     return Stack(
       fit: StackFit.expand,
       children: [
-        // 视频渲染层 - 应用旋转/缩放变换
-        Center(
-          child: Transform.rotate(
-            angle: _rotationState == 0 ? 0 : -math.pi / 2,
-            child: Transform.scale(
-              scale: _rotationState == 0 ? 1.0 : (_rotationState == 1 ? 1.8 : 2.24),
-              child: AspectRatio(
-                aspectRatio: _rotationState == 0 ? 9 / 16 : 16 / 9,
-                child: entry != null
-                    ? _buildVideoWithSaturation(
-                        Video(
-                          controller: entry.controller,
-                          controls: NoVideoControls,
-                          subtitleViewConfiguration: const SubtitleViewConfiguration(visible: true),
-                        ),
-                        saturation,
-                      )
-                    : const Center(child: CircularProgressIndicator(color: Colors.white)),
+        // 视频渲染层：未旋转时铺满全屏，由 Video 按 fit 适配真实比例
+        if (_rotationState == 0)
+          Positioned.fill(
+            child: _buildVideoLayerBody(entry, saturation, fit),
+          )
+        else
+          // 手动旋转三态：仍按 16:9 盒 + 缩放渲染
+          Center(
+            child: Transform.rotate(
+              angle: -math.pi / 2,
+              child: Transform.scale(
+                scale: _rotationState == 1 ? 1.8 : 2.24,
+                child: AspectRatio(
+                  aspectRatio: 16 / 9,
+                  child: _buildVideoLayerBody(entry, saturation, fit),
+                ),
               ),
             ),
           ),
-        ),
 
         // 点击交互层 - 仅 onTap，不拦截 drag，让垂直滑动穿透到 PageView
         if (isCurrentPage && !PlatformUtils.isDesktop)
@@ -1132,8 +1291,106 @@ class _VideoPlayerPageState extends State<VideoPlayerPage>
           const IgnorePointer(
             child: DanmakuOverlay(),
           ),
+
+        // 播放错误提示 (仅当前页且该播放器报错时)
+        if (isCurrentPage && entry != null && entry.error != null)
+          _buildPlaybackError(entry, p.basename(path)),
       ],
     );
+  }
+
+  Widget _buildPlaybackError(_VideoPlayerEntry entry, String fileName) {
+    return Positioned.fill(
+      child: ColoredBox(
+        color: Colors.black.withValues(alpha: 0.88),
+        child: Center(
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 32),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const Icon(Icons.error_outline_rounded, color: Colors.redAccent, size: 44),
+                const SizedBox(height: 14),
+                const Text(
+                  '无法播放',
+                  style: TextStyle(color: Colors.white, fontSize: 17, fontWeight: FontWeight.w600),
+                ),
+                const SizedBox(height: 6),
+                Text(
+                  fileName,
+                  style: const TextStyle(color: Colors.white70, fontSize: 13),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
+                const SizedBox(height: 10),
+                Text(
+                  entry.error!,
+                  style: const TextStyle(color: Colors.white38, fontSize: 11, height: 1.35),
+                  textAlign: TextAlign.center,
+                  maxLines: 3,
+                  overflow: TextOverflow.ellipsis,
+                ),
+                const SizedBox(height: 22),
+                Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    OutlinedButton.icon(
+                      onPressed: _retryCurrentVideo,
+                      icon: const Icon(Icons.refresh_rounded, size: 18),
+                      label: const Text('重试'),
+                      style: OutlinedButton.styleFrom(
+                        foregroundColor: Colors.white,
+                        side: const BorderSide(color: Colors.white30),
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    OutlinedButton.icon(
+                      onPressed: _skipCurrentVideo,
+                      icon: const Icon(Icons.skip_next_rounded, size: 18),
+                      label: const Text('跳过'),
+                      style: OutlinedButton.styleFrom(
+                        foregroundColor: Colors.white,
+                        side: const BorderSide(color: Colors.white30),
+                      ),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  void _retryCurrentVideo() {
+    final entry = _currentEntry;
+    final video = context.read<VideoPlayerProvider>().currentVideo;
+    if (entry == null || video == null) return;
+    setState(() => entry.error = null);
+    entry.player.open(Media(video.path));
+    _loadSubtitles(entry.player, video.path);
+    _playPlayer(video.path);
+  }
+
+  /// 仅把当前视频移出本次播放列表，不删除磁盘文件
+  void _skipCurrentVideo() {
+    final vp = context.read<VideoPlayerProvider>();
+    final current = vp.currentVideo;
+    if (current == null) return;
+    final updated = vp.displayList.where((v) => v.path != current.path).toList();
+    final targetIndex = updated.isEmpty ? 0 : _currentPageIndex.clamp(0, updated.length - 1);
+    _removePlayer(current.path);
+    vp.removeFromDisplay(current.path);
+    if (!mounted) return;
+    if (updated.isEmpty) {
+      _currentPageIndex = 0;
+      setState(() {});
+      return;
+    }
+    _currentPageIndex = targetIndex;
+    _pageController.jumpToPage(targetIndex);
+    _initAndPlayVideo(updated[targetIndex].path);
   }
 
   Widget _buildTopBar(VideoPlayerProvider vp) {
@@ -1204,8 +1461,8 @@ class _VideoPlayerPageState extends State<VideoPlayerPage>
                 IgnorePointer(child: RealTimeCounter()),
                 _GlassIconButton(
                   icon: Icons.settings_rounded,
-                  tooltip: '设置',
-                  onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const SettingsPage())),
+                  tooltip: '视频设置',
+                  onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const VideoSettingsPage())),
                 ),
               ],
             ),
@@ -1216,7 +1473,7 @@ class _VideoPlayerPageState extends State<VideoPlayerPage>
   }
 
   Widget _buildBottomBar(VideoPlayerProvider vp) {
-    final currentEntry = _playerCache[_currentPageIndex];
+    final currentEntry = _currentEntry;
     final config = context.watch<ConfigProvider>().config;
 
     return Positioned(
@@ -1259,14 +1516,12 @@ class _VideoPlayerPageState extends State<VideoPlayerPage>
                                 overflow: TextOverflow.ellipsis,
                               ),
                             ),
-                          Text(
-                            vp.currentVideo!.fileName,
-                            style: TextStyle(
-                              color: Colors.white.withValues(alpha: 0.85),
-                              fontSize: config.fontSize,
-                            ),
+                          TextEffects.build(
+                            text: vp.currentVideo!.fileName,
+                            effectType: config.textEffect,
+                            textColor: config.textColor,
+                            fontSize: config.fontSize,
                             maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
                           ),
                         ],
                       ),
@@ -1374,12 +1629,12 @@ class _VideoPlayerPageState extends State<VideoPlayerPage>
         const PopupMenuItem(value: 'danmaku', child: Text('弹幕设置')),
         const PopupMenuItem(value: 'gesture', child: Text('手势模式')),
         PopupMenuItem(
-          value: 'long_video',
+          value: 'immersive_layout',
           child: Row(
             children: [
-              Icon(_isLongVideoMode ? Icons.check_box_rounded : Icons.check_box_outline_blank_rounded, size: 18),
+              Icon(_isImmersiveLayout ? Icons.check_box_rounded : Icons.check_box_outline_blank_rounded, size: 18),
               const SizedBox(width: 8),
-              const Text('长视频模式'),
+              const Text('横屏控制条布局'),
             ],
           ),
         ),
@@ -1417,11 +1672,11 @@ class _VideoPlayerPageState extends State<VideoPlayerPage>
       case 'gesture':
         vp.enterGestureMode();
         break;
-      case 'long_video':
-        final newValue = !_isLongVideoMode;
-        setState(() => _isLongVideoMode = newValue);
+      case 'immersive_layout':
+        final newValue = !_isImmersiveLayout;
+        setState(() => _isImmersiveLayout = newValue);
         // 持久化用户选择,关闭 App 后仍然记住
-        unawaited(_saveLongVideoOverride(newValue));
+        unawaited(_saveImmersiveLayoutOverride(newValue));
         break;
       case 'favorite_mode':
         final fp = context.read<FavoriteProvider>();
@@ -1470,7 +1725,7 @@ class _VideoPlayerPageState extends State<VideoPlayerPage>
         ),
         onSelected: (rate) {
           _onMenuClose();
-          final entry = _playerCache[_currentPageIndex];
+          final entry = _currentEntry;
           if (entry != null) {
             entry.player.setRate(rate);
           }
@@ -1495,21 +1750,28 @@ class _VideoPlayerPageState extends State<VideoPlayerPage>
           TextButton(
             onPressed: () async {
               Navigator.pop(ctx);
+              final deletedPath = currentVideo.path;
+              // 先释放播放器再删除文件：Windows 上占用中的文件无法删除
+              _removePlayer(deletedPath);
               final config = context.read<ConfigProvider>().config;
               final fileService = FileService(customVideoDir: config.customVideoDir);
               final videoRepo = VideoRepository(fileService);
-              await videoRepo.deleteVideo(currentVideo.path);
-              // 切换到下一个视频
-              if (vp.displayList.length > 1) {
-                final nextIndex = _currentPageIndex < vp.displayList.length - 1
-                    ? _currentPageIndex : _currentPageIndex - 1;
-                final updatedList = vp.displayList.where((v) => v.path != currentVideo.path).toList();
-                vp.setVideoList(updatedList);
-                if (mounted) {
-                  _pageController.jumpToPage(nextIndex.clamp(0, updatedList.length - 1));
-                }
+              await videoRepo.deleteVideo(deletedPath);
+              if (!mounted) return;
+              final resume = context.read<ResumeProvider>();
+              final favorites = context.read<FavoriteProvider>();
+              resume.stopAutoSave();
+              await resume.clearRecord(deletedPath);
+              await favorites.removeFavorite(deletedPath);
+              if (!mounted) return;
+              vp.removeVideoEverywhere(deletedPath);
+              if (vp.displayList.isEmpty) {
+                _currentPageIndex = 0;
+                setState(() {});
               } else {
-                vp.setVideoList([]);
+                _currentPageIndex = vp.currentIndex;
+                _pageController.jumpToPage(_currentPageIndex);
+                _initAndPlayVideo(vp.displayList[_currentPageIndex].path);
               }
               if (mounted) {
                 ToastUtil.show(context, '已删除 ${currentVideo.fileName}');
@@ -1601,7 +1863,7 @@ class _VideoPlayerPageState extends State<VideoPlayerPage>
 
   /// 右滑截取当前帧作为缩略图
   Future<void> _captureThumbnail() async {
-    final entry = _playerCache[_currentPageIndex];
+    final entry = _currentEntry;
     if (entry == null) return;
     try {
       final bytes = await entry.player.screenshot(format: 'image/jpeg');
@@ -1788,6 +2050,8 @@ class _QuickerScrollPhysics extends BouncingScrollPhysics {
 class _VideoPlayerEntry {
   final Player player;
   final VideoController controller;
+  StreamSubscription<String>? errorSubscription;
+  String? error;
 
   _VideoPlayerEntry(this.player, this.controller);
 }

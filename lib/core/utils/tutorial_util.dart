@@ -58,7 +58,7 @@ void showTutorialDialog(BuildContext context) {
                     _item('博主筛选', '按博主分组'),
                     _item('长按视频项', '删除视频（需确认）'),
                     _section('密码入口'),
-                    _item('99', '进入视频模式'),
+                    _item('99', '进入短视频 / 长视频模式'),
                     _item('88', '进入美图模式'),
                     _item('77', '进入在线模式'),
                     _section('文件命名规则'),

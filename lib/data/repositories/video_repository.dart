@@ -23,24 +23,6 @@ class VideoRepository {
     videos.removeWhere((v) => v.path == path);
   }
 
-  List<VideoItem> search(String keyword) {
-    final lower = keyword.toLowerCase();
-    return videos.where((v) =>
-      v.fileName.toLowerCase().contains(lower) ||
-      (v.bloggerName?.toLowerCase().contains(lower) ?? false) ||
-      (v.douyinId?.contains(lower) ?? false)
-    ).toList();
-  }
-
-  Map<String, List<VideoItem>> groupByBlogger() {
-    final map = <String, List<VideoItem>>{};
-    for (final v in videos) {
-      final name = v.bloggerName ?? '未知';
-      map.putIfAbsent(name, () => []).add(v);
-    }
-    return map;
-  }
-
   /// 按文件名(去后缀)分组，返回同名视频组(数量>1)
   Map<String, List<VideoItem>> findDuplicateVideos() {
     final map = <String, List<VideoItem>>{};

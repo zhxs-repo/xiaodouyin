@@ -52,6 +52,24 @@ class ResumeProvider extends ChangeNotifier {
     _saveTimer = null;
   }
 
+  /// 立即落盘一次进度（切换视频时保存上一条记录，不等 10 秒定时器）
+  Future<void> saveNow(
+    String videoPath,
+    Duration Function() getPosition,
+    Duration Function() getDuration,
+  ) async {
+    if (!_isEnabled) return;
+    final position = getPosition();
+    final duration = getDuration();
+    if (duration.inSeconds <= 60) return;
+    await _repository.saveRecord(PlayHistoryRecord(
+      videoPath: videoPath,
+      position: position,
+      duration: duration,
+      timestamp: DateTime.now(),
+    ));
+  }
+
   Future<void> clearRecord(String videoPath) async {
     await _repository.clearRecord(videoPath);
   }

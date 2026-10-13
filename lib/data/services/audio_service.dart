@@ -1,11 +1,14 @@
 import 'package:audioplayers/audioplayers.dart';
 
 class AudioService {
-  final AudioPlayer _player = AudioPlayer();
+  AudioPlayer? _player;
   List<String> _playlist = [];
   int _currentIndex = 0;
   bool _isPlaying = false;
   double _volume = 1.0;
+
+  /// 首次播放才创建原生播放器，避免 App 一启动就常驻一个 audioplayers 实例
+  AudioPlayer get _audio => _player ??= AudioPlayer();
 
   bool get isPlaying => _isPlaying;
   int get currentIndex => _currentIndex;
@@ -21,22 +24,27 @@ class AudioService {
     if (_playlist.isEmpty) return;
     if (index != null) _currentIndex = index;
     if (_currentIndex >= _playlist.length) return;
-    await _player.play(DeviceFileSource(_playlist[_currentIndex]));
+    final player = _audio;
+    await player.setVolume(_volume);
+    await player.play(DeviceFileSource(_playlist[_currentIndex]));
     _isPlaying = true;
   }
 
   Future<void> pause() async {
-    await _player.pause();
+    if (_player == null) return;
+    await _player!.pause();
     _isPlaying = false;
   }
 
   Future<void> resume() async {
-    await _player.resume();
+    if (_player == null) return;
+    await _player!.resume();
     _isPlaying = true;
   }
 
   Future<void> stop() async {
-    await _player.stop();
+    if (_player == null) return;
+    await _player!.stop();
     _isPlaying = false;
   }
 
@@ -56,10 +64,11 @@ class AudioService {
 
   Future<void> setVolume(double volume) async {
     _volume = volume.clamp(0.0, 1.0);
-    await _player.setVolume(_volume);
+    await _player?.setVolume(_volume);
   }
 
   Future<void> dispose() async {
-    await _player.dispose();
+    await _player?.dispose();
+    _player = null;
   }
 }

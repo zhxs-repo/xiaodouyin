@@ -4,6 +4,9 @@ enum PlayMode { normal, loop, loopOne }
 
 enum TextEffectType { solid, gradient, colorful }
 
+/// 视频画面填充方式，对应 Flutter 的 BoxFit
+enum VideoFitMode { contain, cover, fitWidth, fitHeight }
+
 @immutable
 class AppConfig {
   final PlayMode playMode;
@@ -28,6 +31,8 @@ class AppConfig {
   final String onlineModePassword;
   // 主题模式: 'system' / 'dark' / 'light'
   final String themeMode;
+  // 视频画面填充方式
+  final VideoFitMode videoFit;
 
   const AppConfig({
     this.playMode = PlayMode.normal,
@@ -51,6 +56,7 @@ class AppConfig {
     this.beautyModePassword = '88',
     this.onlineModePassword = '77',
     this.themeMode = 'system',
+    this.videoFit = VideoFitMode.contain,
   });
 
   AppConfig copyWith({
@@ -75,6 +81,7 @@ class AppConfig {
     String? beautyModePassword,
     String? onlineModePassword,
     String? themeMode,
+    VideoFitMode? videoFit,
   }) => AppConfig(
     playMode: playMode ?? this.playMode,
     scale: scale ?? this.scale,
@@ -97,6 +104,7 @@ class AppConfig {
     beautyModePassword: beautyModePassword ?? this.beautyModePassword,
     onlineModePassword: onlineModePassword ?? this.onlineModePassword,
     themeMode: themeMode ?? this.themeMode,
+    videoFit: videoFit ?? this.videoFit,
   );
 
   Map<String, dynamic> toJson() => {
@@ -121,6 +129,7 @@ class AppConfig {
     'beautyModePassword': beautyModePassword,
     'onlineModePassword': onlineModePassword,
     'themeMode': themeMode,
+    'videoFit': videoFit.name,
   };
 
   factory AppConfig.fromJson(Map<String, dynamic> json) => AppConfig(
@@ -147,5 +156,7 @@ class AppConfig {
     beautyModePassword: json['beautyModePassword'] as String? ?? '88',
     onlineModePassword: json['onlineModePassword'] as String? ?? '77',
     themeMode: json['themeMode'] as String? ?? 'system',
+    videoFit: VideoFitMode.values.firstWhere(
+      (e) => e.name == json['videoFit'], orElse: () => VideoFitMode.contain),
   );
 }

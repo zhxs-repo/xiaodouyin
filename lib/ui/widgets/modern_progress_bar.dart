@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:collection';
+import 'dart:convert';
 import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'package:media_kit/media_kit.dart';
@@ -44,6 +45,8 @@ class _ModernProgressBarState extends State<ModernProgressBar> {
   StreamSubscription<Duration>? _durationSub;
   StreamSubscription<Duration>? _bufferSub;
   Player? _currentPlayer;
+  List<Duration> _chapters = const [];
+  int _chapterSeq = 0;
 
   // 缩略图 LRU 缓存 (Phase 4)
   static const int _maxThumbnailCache = 8;
@@ -55,7 +58,10 @@ class _ModernProgressBarState extends State<ModernProgressBar> {
   String? _currentVideoPath;
 
   // 静态缓存,跨 widget 实例复用 (避免重复解码同一帧)
-  static final LinkedHashMap<String, LinkedHashMap<int, Uint8List>> _globalCache = LinkedHashMap();
+  // 外层 key 是视频路径，必须同样设上限，否则每个拖动过进度条的视频都会永久留一份
+  static final LinkedHashMap<String, Map<int, Uint8List>> _globalCache =
+      LinkedHashMap();
+  static const int _maxCachedVideos = 12;
 
   @override
   void initState() {
@@ -82,6 +88,7 @@ class _ModernProgressBarState extends State<ModernProgressBar> {
 
   void _listenToPlayer() {
     _currentPlayer = widget.player;
+    _chapters = const [];
     if (widget.player == null) return;
     final p = widget.player!;
     _position = p.state.position;
@@ -91,11 +98,17 @@ class _ModernProgressBarState extends State<ModernProgressBar> {
       if (!_isDragging && mounted) setState(() => _position = pos);
     });
     _durationSub = p.stream.duration.listen((dur) {
-      if (mounted) setState(() => _duration = dur);
+      if (!mounted) return;
+      // 时长跳变即 mpv 换了一个文件，此时章节列表才随文件头一起解析出来
+      final switched =
+          (dur.inMilliseconds - _duration.inMilliseconds).abs() > 1000;
+      setState(() => _duration = dur);
+      if (switched) _loadChapters();
     });
     _bufferSub = p.stream.buffer.listen((buf) {
       if (mounted) setState(() => _buffer = buf);
     });
+    _loadChapters();
   }
 
   @override
@@ -107,7 +120,9 @@ class _ModernProgressBarState extends State<ModernProgressBar> {
   }
 
   double get _progress => _duration.inMilliseconds > 0
-      ? (_isDragging ? (_dragValue ?? 0) : _position.inMilliseconds / _duration.inMilliseconds)
+      ? (_isDragging
+            ? (_dragValue ?? 0)
+            : _position.inMilliseconds / _duration.inMilliseconds)
       : 0.0;
 
   double get _bufferProgress {
@@ -115,20 +130,30 @@ class _ModernProgressBarState extends State<ModernProgressBar> {
     return (_buffer.inMilliseconds / _duration.inMilliseconds).clamp(0.0, 1.0);
   }
 
-  Duration _targetDuration(double v) =>
-      Duration(milliseconds: (v.clamp(0.0, 1.0) * _duration.inMilliseconds).round());
+  Duration _targetDuration(double v) => Duration(
+    milliseconds: (v.clamp(0.0, 1.0) * _duration.inMilliseconds).round(),
+  );
 
-  /// 自动生成章节 (时长 ≥ 10 min 时,按 5 min 等分)
-  List<Duration> get _chapters {
-    if (_duration < const Duration(minutes: 10)) return const [];
-    final interval = const Duration(minutes: 5);
-    final chapters = <Duration>[];
-    var t = interval;
-    while (t < _duration) {
-      chapters.add(t);
-      t += interval;
+  /// 读取 mpv 的真实章节；绝大多数本地视频没有章节信息，此时不画任何刻度
+  Future<void> _loadChapters() async {
+    final platform = widget.player?.platform;
+    if (platform is! NativePlayer) return;
+    final seq = ++_chapterSeq;
+    List<Duration> chapters = const [];
+    try {
+      final decoded = jsonDecode(await platform.getProperty('chapter-list'));
+      if (decoded is List) {
+        chapters = [
+          for (final e in decoded)
+            if (e is Map && e['time'] is num)
+              Duration(milliseconds: ((e['time'] as num) * 1000).round()),
+        ];
+      }
+    } catch (_) {
+      chapters = const [];
     }
-    return chapters;
+    if (!mounted || seq != _chapterSeq) return;
+    setState(() => _chapters = chapters);
   }
 
   void _onPointerMove(PointerEvent e, double trackWidth) {
@@ -182,12 +207,15 @@ class _ModernProgressBarState extends State<ModernProgressBar> {
       );
       if (!mounted) return;
       if (data != null) {
-        _globalCache.putIfAbsent(path, () => LinkedHashMap());
-        final cache = _globalCache[path]!;
+        // 命中或新写入都把该视频挪到末尾；超出上限时丢弃最久未用的一整个视频
+        final cache = _globalCache.remove(path) ?? <int, Uint8List>{};
         cache[key] = data;
-        // LRU 淘汰
         while (cache.length > _maxThumbnailCache) {
           cache.remove(cache.keys.first);
+        }
+        _globalCache[path] = cache;
+        while (_globalCache.length > _maxCachedVideos) {
+          _globalCache.remove(_globalCache.keys.first);
         }
         if (_thumbnailRequestKey == key) {
           setState(() {
@@ -207,7 +235,9 @@ class _ModernProgressBarState extends State<ModernProgressBar> {
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
     final showBubble = widget.showTimeBubble && (_isDragging || _isHovering);
-    final bubbleValue = _isDragging ? (_dragValue ?? 0.0) : (_hoverValue ?? 0.0);
+    final bubbleValue = _isDragging
+        ? (_dragValue ?? 0.0)
+        : (_hoverValue ?? 0.0);
     final showFullTrack = _isDragging || _isHovering;
     final isWide = widget.width != null && widget.width! > 480;
     final showThumbnail = _isDragging && _currentThumbnail != null;
@@ -219,142 +249,166 @@ class _ModernProgressBarState extends State<ModernProgressBar> {
           onEnter: (_) => setState(() => _isHovering = true),
           onExit: (_) => setState(() => _isHovering = false),
           onHover: (e) => _onPointerMove(e, trackWidth),
-          child: Listener(
-            onPointerDown: (e) {
-              setState(() {
-                _isDragging = true;
-                _dragValue = (e.localPosition.dx / trackWidth).clamp(0.0, 1.0);
-              });
-              _maybeLoadThumbnail(_targetDuration(_dragValue ?? 0));
-            },
-            onPointerMove: (e) => _onPointerMove(e, trackWidth),
-            onPointerUp: (e) {
-              if (_isDragging) {
-                final v = (e.localPosition.dx / trackWidth).clamp(0.0, 1.0);
-                widget.player?.seek(_targetDuration(v));
+          // Listener 不进手势竞技场, 单独用它的话点击会原样穿透给外层的
+          // "点画面切播放/暂停" GestureDetector; 这里用 opaque + 空 onTap 在本层
+          // 吃掉点击, 真正的 seek 仍由下面的 Listener 负责
+          child: GestureDetector(
+            behavior: HitTestBehavior.opaque,
+            onTap: () {},
+            child: Listener(
+              onPointerDown: (e) {
                 setState(() {
-                  _isDragging = false;
-                  _dragValue = null;
-                  _currentThumbnail = null;
-                  _thumbnailRequestKey = null;
+                  _isDragging = true;
+                  _dragValue = (e.localPosition.dx / trackWidth).clamp(0.0, 1.0);
                 });
-              }
-            },
-            onPointerCancel: (e) => setState(() {
-              _isDragging = false;
-              _dragValue = null;
-              _currentThumbnail = null;
-              _thumbnailRequestKey = null;
-            }),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                if (isWide) ...[
-                  _TopRow(
-                    position: _position,
-                    duration: _duration,
-                    showTarget: _isDragging,
-                    target: _targetDuration(bubbleValue),
-                  ),
-                  const SizedBox(height: 6),
-                ],
-                Stack(
-                  clipBehavior: Clip.none,
-                  alignment: Alignment.centerLeft,
-                  children: [
-                    // 缓冲条
-                    Container(
-                      height: showFullTrack ? 6 : 4,
-                      decoration: BoxDecoration(
-                        color: Colors.white.withValues(alpha: 0.18),
-                        borderRadius: BorderRadius.circular(3),
-                      ),
+                _maybeLoadThumbnail(_targetDuration(_dragValue ?? 0));
+              },
+              onPointerMove: (e) => _onPointerMove(e, trackWidth),
+              onPointerUp: (e) {
+                if (_isDragging) {
+                  final v = (e.localPosition.dx / trackWidth).clamp(0.0, 1.0);
+                  widget.player?.seek(_targetDuration(v));
+                  setState(() {
+                    _isDragging = false;
+                    _dragValue = null;
+                    _currentThumbnail = null;
+                    _thumbnailRequestKey = null;
+                  });
+                }
+              },
+              onPointerCancel: (e) => setState(() {
+                _isDragging = false;
+                _dragValue = null;
+                _currentThumbnail = null;
+                _thumbnailRequestKey = null;
+              }),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  if (isWide) ...[
+                    _TopRow(
+                      position: _position,
+                      duration: _duration,
+                      showTarget: _isDragging,
+                      target: _targetDuration(bubbleValue),
                     ),
-                    FractionallySizedBox(
-                      widthFactor: _bufferProgress,
-                      child: AnimatedContainer(
-                        duration: AppTheme.durFast,
+                    const SizedBox(height: 6),
+                  ],
+                  Stack(
+                    clipBehavior: Clip.none,
+                    alignment: Alignment.centerLeft,
+                    children: [
+                      // 缓冲条
+                      Container(
                         height: showFullTrack ? 6 : 4,
                         decoration: BoxDecoration(
-                          color: Colors.white.withValues(alpha: 0.32),
+                          color: Colors.white.withValues(alpha: 0.18),
                           borderRadius: BorderRadius.circular(3),
                         ),
                       ),
-                    ),
-                    // 已播放
-                    FractionallySizedBox(
-                      widthFactor: _progress.clamp(0.0, 1.0),
-                      child: AnimatedContainer(
-                        duration: AppTheme.durFast,
-                        height: showFullTrack ? 6 : 4,
-                        decoration: BoxDecoration(
-                          color: colorScheme.primary,
-                          borderRadius: BorderRadius.circular(3),
+                      FractionallySizedBox(
+                        widthFactor: _bufferProgress,
+                        child: AnimatedContainer(
+                          duration: AppTheme.durFast,
+                          height: showFullTrack ? 6 : 4,
+                          decoration: BoxDecoration(
+                            color: Colors.white.withValues(alpha: 0.32),
+                            borderRadius: BorderRadius.circular(3),
+                          ),
                         ),
                       ),
-                    ),
-                    // Thumb
-                    if (showFullTrack)
-                      Positioned(
-                        left: (_progress.clamp(0.0, 1.0) * trackWidth) - 7,
-                        child: Container(
-                          width: 14, height: 14,
+                      // 已播放
+                      FractionallySizedBox(
+                        widthFactor: _progress.clamp(0.0, 1.0),
+                        child: AnimatedContainer(
+                          duration: AppTheme.durFast,
+                          height: showFullTrack ? 6 : 4,
                           decoration: BoxDecoration(
                             color: colorScheme.primary,
-                            shape: BoxShape.circle,
-                            boxShadow: [
-                              BoxShadow(
-                                color: colorScheme.primary.withValues(alpha: 0.4),
-                                blurRadius: 6,
+                            borderRadius: BorderRadius.circular(3),
+                          ),
+                        ),
+                      ),
+                      // Thumb
+                      if (showFullTrack)
+                        Positioned(
+                          left: (_progress.clamp(0.0, 1.0) * trackWidth) - 7,
+                          child: Container(
+                            width: 14,
+                            height: 14,
+                            decoration: BoxDecoration(
+                              color: colorScheme.primary,
+                              shape: BoxShape.circle,
+                              boxShadow: [
+                                BoxShadow(
+                                  color: colorScheme.primary.withValues(
+                                    alpha: 0.4,
+                                  ),
+                                  blurRadius: 6,
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
+                      // 章节刻度：仅画文件里真实存在的章节
+                      if (_chapters.isNotEmpty)
+                        ..._chapters.map((c) {
+                          final ratio = _duration.inMilliseconds > 0
+                              ? c.inMilliseconds / _duration.inMilliseconds
+                              : 0.0;
+                          return Positioned(
+                            left: (ratio.clamp(0.0, 1.0) * trackWidth) - 1,
+                            top: -3,
+                            bottom: -3,
+                            child: Container(
+                              width: 2,
+                              decoration: BoxDecoration(
+                                color: Colors.white.withValues(alpha: 0.5),
+                                borderRadius: BorderRadius.circular(1),
                               ),
-                            ],
-                          ),
+                            ),
+                          );
+                        }),
+                      // 时间气泡 / 缩略图气泡
+                      if (showBubble)
+                        Positioned(
+                          left:
+                              (bubbleValue.clamp(0.0, 1.0) * trackWidth).clamp(
+                                0.0,
+                                trackWidth - 60,
+                              ) -
+                              28,
+                          top: showThumbnail ? -110 : -36,
+                          child: showThumbnail
+                              ? _ThumbnailBubble(
+                                  imageData: _currentThumbnail!,
+                                  duration: _targetDuration(bubbleValue),
+                                  isLoading: _isLoadingThumbnail,
+                                )
+                              : _TimeBubble(
+                                  duration: _targetDuration(bubbleValue),
+                                ),
                         ),
-                      ),
-                    // 章节标记 (Phase 4)
-                    ..._chapters.map((c) {
-                      final ratio = _duration.inMilliseconds > 0
-                          ? c.inMilliseconds / _duration.inMilliseconds
-                          : 0.0;
-                      return Positioned(
-                        left: (ratio.clamp(0.0, 1.0) * trackWidth) - 1,
-                        top: -3,
-                        bottom: -3,
-                        child: Container(
-                          width: 2,
-                          decoration: BoxDecoration(
-                            color: Colors.white.withValues(alpha: 0.5),
-                            borderRadius: BorderRadius.circular(1),
-                          ),
-                        ),
-                      );
-                    }),
-                    // 时间气泡 / 缩略图气泡
-                    if (showBubble)
-                      Positioned(
-                        left: (bubbleValue.clamp(0.0, 1.0) * trackWidth).clamp(0.0, trackWidth - 60) - 28,
-                        top: showThumbnail ? -110 : -36,
-                        child: showThumbnail
-                            ? _ThumbnailBubble(
-                                imageData: _currentThumbnail!,
-                                duration: _targetDuration(bubbleValue),
-                                isLoading: _isLoadingThumbnail,
-                              )
-                            : _TimeBubble(duration: _targetDuration(bubbleValue)),
-                      ),
-                  ],
-                ),
-                if (!isWide) ...[
-                  const SizedBox(height: 4),
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      Text(_format(_position), style: _labelStyle(colorScheme)),
-                      Text(_format(_duration), style: _labelStyle(colorScheme)),
                     ],
                   ),
+                  if (!isWide) ...[
+                    const SizedBox(height: 4),
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        Text(
+                          _format(_position),
+                          style: _labelStyle(colorScheme),
+                        ),
+                        Text(
+                          _format(_duration),
+                          style: _labelStyle(colorScheme),
+                        ),
+                      ],
+                    ),
+                  ],
                 ],
-              ],
+              ),
             ),
           ),
         );
@@ -490,7 +544,8 @@ class _ThumbnailBubble extends StatelessWidget {
                         color: Color(0x66000000),
                         child: Center(
                           child: SizedBox(
-                            width: 18, height: 18,
+                            width: 18,
+                            height: 18,
                             child: CircularProgressIndicator(
                               strokeWidth: 2,
                               color: Colors.white,

@@ -32,6 +32,9 @@ class VideoPlayerProvider extends ChangeNotifier {
   void setVideoList(List<VideoItem> videos) {
     _videoList = videos;
     _displayList = List.from(videos);
+    _originalList = [];
+    _isListMode = false;
+    _isFavoriteMode = false;
     _currentIndex = 0;
     notifyListeners();
   }
@@ -72,6 +75,26 @@ class VideoPlayerProvider extends ChangeNotifier {
     if (index < 0 || index >= _displayList.length) return;
     _currentIndex = index;
     notifyListeners();
+  }
+
+  /// 从当前展示列表移除一个视频，保持所处模式（收藏/列表）与当前页语义
+  void removeFromDisplay(String path) {
+    final idx = _displayList.indexWhere((v) => v.path == path);
+    if (idx < 0) return;
+    final beforeCurrent = idx < _currentIndex;
+    _displayList = _displayList.where((v) => v.path != path).toList();
+    if (beforeCurrent) _currentIndex -= 1;
+    _currentIndex = _displayList.isEmpty
+        ? 0
+        : _currentIndex.clamp(0, _displayList.length - 1);
+    notifyListeners();
+  }
+
+  /// 文件已从磁盘删除：完整库、原始列表与展示列表一并移除
+  void removeVideoEverywhere(String path) {
+    _videoList = _videoList.where((v) => v.path != path).toList();
+    _originalList = _originalList.where((v) => v.path != path).toList();
+    removeFromDisplay(path);
   }
 
   void setPlaying(bool playing) {

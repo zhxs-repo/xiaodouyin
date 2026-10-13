@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'video_player_page.dart';
+import 'long_video_player_page.dart';
 import 'beauty_page.dart';
 import 'online_page.dart';
 
@@ -23,7 +24,8 @@ class _PasswordPageState extends State<PasswordPage> {
   void initState() {
     super.initState();
     switch (widget.mode) {
-      case 'video': _modeLabel = '视频模式'; break;
+      case 'video': _modeLabel = '短视频模式'; break;
+      case 'longvideo': _modeLabel = '长视频模式'; break;
       case 'beauty': _modeLabel = '美图模式'; break;
       case 'online': _modeLabel = '在线模式'; break;
     }
@@ -69,6 +71,7 @@ class _PasswordPageState extends State<PasswordPage> {
     Widget page;
     switch (widget.mode) {
       case 'video': page = const VideoPlayerPage(); break;
+      case 'longvideo': page = const LongVideoPlayerPage(); break;
       case 'beauty': page = const BeautyPage(); break;
       case 'online': page = const OnlinePage(); break;
       default: page = const VideoPlayerPage();

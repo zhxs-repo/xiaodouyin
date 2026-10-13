@@ -20,6 +20,8 @@ class OnlineProvider extends ChangeNotifier {
   int _currentVideoIndex = 0;
   String? _currentCategoryId;
   String? _currentCategoryName;
+  bool _isStreaming = false;
+  String? _streamingTitle;
   static const int _preloadCount = 3;
 
   // 会话列表：记录当前会话浏览过的视频URL
@@ -36,6 +38,8 @@ class OnlineProvider extends ChangeNotifier {
   List<String> get videoUrlList => _videoUrlList;
   int get currentVideoIndex => _currentVideoIndex;
   String? get currentCategoryId => _currentCategoryId;
+  bool get isStreaming => _isStreaming;
+  String? get streamingTitle => _streamingTitle;
   List<SessionItem> get sessionItems => List.unmodifiable(_sessionItems);
 
   void loadCategories() {
@@ -76,6 +80,8 @@ class OnlineProvider extends ChangeNotifier {
   Future<void> initVideoSwipeList(String categoryId, {String categoryName = ''}) async {
     _currentCategoryId = categoryId;
     _currentCategoryName = categoryName;
+    _isStreaming = false;
+    _streamingTitle = null;
     _videoUrlList.clear();
     _currentVideoIndex = 0;
     _error = null;
@@ -97,6 +103,22 @@ class OnlineProvider extends ChangeNotifier {
       }
     }
 
+    _isLoading = false;
+    notifyListeners();
+  }
+
+  /// 进入自定义串流模式：把单条URL塞入播放列表，跳过分类接口
+  /// 标记 _isStreaming=true 后，onVideoPageChanged 不会触发分类预加载
+  void setStreamingUrl(String url, {String? title}) {
+    _currentCategoryId = null;
+    _currentCategoryName = title ?? '串流播放';
+    _isStreaming = true;
+    _streamingTitle = _currentCategoryName;
+    _videoUrlList
+      ..clear()
+      ..add(url);
+    _currentVideoIndex = 0;
+    _error = null;
     _isLoading = false;
     notifyListeners();
   }

@@ -8,6 +8,8 @@ import 'app.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  // 解码后的位图远比 JPEG/原图文件大(约20~30倍)，默认 100MB 上限对本应用的缩略图墙偏高
+  PaintingBinding.instance.imageCache.maximumSizeBytes = 30 * 1024 * 1024;
   MediaKit.ensureInitialized();
   if (PlatformUtils.isDesktop) {
     await windowManager.ensureInitialized();

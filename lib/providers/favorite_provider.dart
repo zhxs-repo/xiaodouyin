@@ -9,10 +9,15 @@ import '../core/constants/app_constants.dart';
 
 class FavoriteProvider extends ChangeNotifier {
   final FavoriteRepository _repository;
+
+  /// 自动存档开关。长视频模式的收藏写入同一存档目录会与短视频存档混淆，
+  /// 因此长视频侧关闭自动导出。
+  final bool _autoExport;
   bool _isFavoriteMode = false;
   int _lastAutoSaveCount = 0; // 上次自动导出时的收藏数
 
-  FavoriteProvider(this._repository);
+  FavoriteProvider(this._repository, {bool autoExport = true})
+      : _autoExport = autoExport;
 
   List<FavoriteItem> get favorites => _repository.favorites;
   bool get isFavoriteMode => _isFavoriteMode;
@@ -27,7 +32,7 @@ class FavoriteProvider extends ChangeNotifier {
     final added = await _repository.toggle(filePath, index);
     notifyListeners();
     // 自动导出检查：收藏数是3的倍数且不等于上次导出时的数量
-    _checkAutoExport();
+    if (_autoExport) _checkAutoExport();
     return added;
   }
 
@@ -54,6 +59,13 @@ class FavoriteProvider extends ChangeNotifier {
   }
 
   bool isFavorite(String filePath) => _repository.isFavorite(filePath);
+
+  /// 视频文件被删除时同步移除对应收藏，避免留下失效路径
+  Future<void> removeFavorite(String filePath) async {
+    if (!_repository.isFavorite(filePath)) return;
+    await _repository.remove(filePath);
+    notifyListeners();
+  }
 
   void enterFavoriteMode() {
     _isFavoriteMode = true;

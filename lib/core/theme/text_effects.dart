@@ -7,6 +7,8 @@ class TextEffects {
     required TextEffectType effectType,
     required String textColor,
     required double fontSize,
+    int? maxLines,
+    TextOverflow? overflow,
     AnimationController? colorfulController,
   }) {
     final baseStyle = TextStyle(
@@ -19,6 +21,8 @@ class TextEffects {
         return Text(
           text,
           style: baseStyle.copyWith(color: _parseColor(textColor)),
+          maxLines: maxLines,
+          overflow: overflow ?? TextOverflow.ellipsis,
         );
 
       case TextEffectType.gradient:
@@ -30,7 +34,12 @@ class TextEffects {
               Colors.red,
             ],
           ).createShader(bounds),
-          child: Text(text, style: baseStyle.copyWith(color: Colors.white)),
+          child: Text(
+            text,
+            style: baseStyle.copyWith(color: Colors.white),
+            maxLines: maxLines,
+            overflow: overflow ?? TextOverflow.ellipsis,
+          ),
         );
 
       case TextEffectType.colorful:
@@ -47,12 +56,22 @@ class TextEffects {
                     HSLColor.fromAHSL(1, (hue + 240) % 360, 1, 0.5).toColor(),
                   ],
                 ).createShader(bounds),
-                child: Text(text, style: baseStyle.copyWith(color: Colors.white)),
+                child: Text(
+                  text,
+                  style: baseStyle.copyWith(color: Colors.white),
+                  maxLines: maxLines,
+                  overflow: overflow ?? TextOverflow.ellipsis,
+                ),
               );
             },
           );
         }
-        return Text(text, style: baseStyle.copyWith(color: _parseColor(textColor)));
+        return Text(
+          text,
+          style: baseStyle.copyWith(color: _parseColor(textColor)),
+          maxLines: maxLines,
+          overflow: overflow ?? TextOverflow.ellipsis,
+        );
     }
   }
 

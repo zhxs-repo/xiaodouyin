@@ -55,6 +55,7 @@ class ConfigProvider extends ChangeNotifier {
     String? beautyModePassword,
     String? onlineModePassword,
     String? themeMode,
+    VideoFitMode? videoFit,
   }) async {
     _config = _config.copyWith(
       playMode: playMode,
@@ -78,6 +79,7 @@ class ConfigProvider extends ChangeNotifier {
       beautyModePassword: beautyModePassword,
       onlineModePassword: onlineModePassword,
       themeMode: themeMode,
+      videoFit: videoFit,
     );
     await _repository.updateConfig(_config);
     _syncCustomDirs();

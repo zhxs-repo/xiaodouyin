@@ -4,14 +4,16 @@ import '../../core/constants/storage_keys.dart';
 
 class PlayHistoryRepository {
   final StorageService _storage;
+  final String storageKey;
   Map<String, PlayHistoryRecord> _history = {};
 
-  PlayHistoryRepository(this._storage);
+  PlayHistoryRepository(this._storage,
+      {this.storageKey = StorageKeys.globalVideoPlayHistory});
 
   Map<String, PlayHistoryRecord> get history => _history;
 
   Future<void> load() async {
-    final json = _storage.getJson(StorageKeys.globalVideoPlayHistory);
+    final json = _storage.getJson(storageKey);
     if (json != null) {
       _history = json.map((k, v) => MapEntry(
         k, PlayHistoryRecord.fromJson(v as Map<String, dynamic>)));
@@ -19,7 +21,7 @@ class PlayHistoryRepository {
   }
 
   Future<void> _save() async {
-    await _storage.setJson(StorageKeys.globalVideoPlayHistory,
+    await _storage.setJson(storageKey,
       _history.map((k, v) => MapEntry(k, v.toJson())));
   }
 

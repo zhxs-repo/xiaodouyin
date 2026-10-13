@@ -55,6 +55,11 @@ class _PlaybackGestureDetectorState extends State<PlaybackGestureDetector>
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
     _hideTimer?.cancel();
+    // 离开播放页时把亮度交还系统，否则手势设定的亮度会一直残留在全 App
+    if (_userSetBrightness != null) {
+      _userSetBrightness = null;
+      unawaited(ScreenBrightness().resetScreenBrightness());
+    }
     super.dispose();
   }
 

@@ -4,6 +4,16 @@ import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../../providers/beauty_provider.dart';
 
+/// 预览图解码宽度上限。解码位图约 cacheWidth × 高 × 4 字节，一张 1080 宽的近 6MB。
+const int _previewCacheWidth = 1080;
+
+/// 预览图的 provider。
+///
+/// Image.file(cacheWidth:) 内部会把 FileImage 包一层 ResizeImage，所以缓存 key 包含
+/// 解码尺寸；precache 时必须走同一个构造函数，否则预热的是另一份原图尺寸的解码结果。
+ImageProvider<Object> _previewProvider(String path) =>
+    ResizeImage.resizeIfNeeded(_previewCacheWidth, null, FileImage(File(path)));
+
 class BeautyPreviewPage extends StatefulWidget {
   final int initialIndex;
   const BeautyPreviewPage({super.key, this.initialIndex = 0});
@@ -78,10 +88,10 @@ class _BeautyPreviewPageState extends State<BeautyPreviewPage> {
     if (index == _lastPreloadIndex) return;
     _lastPreloadIndex = index;
     if (index > 0) {
-      precacheImage(FileImage(File(bp.images[index - 1])), context);
+      precacheImage(_previewProvider(bp.images[index - 1]), context);
     }
     if (index < bp.images.length - 1) {
-      precacheImage(FileImage(File(bp.images[index + 1])), context);
+      precacheImage(_previewProvider(bp.images[index + 1]), context);
     }
   }
 
@@ -232,7 +242,7 @@ class _BeautyPreviewPageState extends State<BeautyPreviewPage> {
             child: Image.file(
               File(imagePath),
               fit: BoxFit.contain,
-              cacheWidth: 1080,
+              cacheWidth: _previewCacheWidth,
               filterQuality: FilterQuality.high,
               errorBuilder: (_, _, _) => const Icon(Icons.broken_image, size: 100, color: Colors.white24),
             ),

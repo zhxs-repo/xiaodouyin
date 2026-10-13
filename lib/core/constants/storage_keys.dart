@@ -5,6 +5,10 @@ class StorageKeys {
   static const String folderLastPlayed = 'folderLastPlayed';
   static const String isGlobalResumeEnabled = 'isGlobalResumeEnabled';
   static const String globalVideoPlayHistory = 'globalVideoPlayHistory';
+
+  // 长视频模式数据（与短视频完全隔离）
+  static const String longVideoFavorites = 'longVideoFavorites';
+  static const String longVideoPlayHistory = 'longVideoPlayHistory';
   static const String cultivationEnabled = 'cultivationEnabled';
   static const String cultivationState = 'cultivationState';
   static const String vibrationEnabled = 'vibrationEnabled';
@@ -38,6 +42,6 @@ class StorageKeys {
   static const String configFontSize = '字体大小';
   static const String configTextColor = '文字颜色';
 
-  // 长视频模式用户偏好 (true=强制开启, false=强制关闭, null=自动检测)
-  static const String longVideoModeOverride = 'longVideoModeOverride';
+  // 横屏控制条布局用户偏好 (true=强制开启, false=强制关闭, null=自动检测)
+  static const String immersiveLayoutOverride = 'immersiveLayoutOverride';
 }

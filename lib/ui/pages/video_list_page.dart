@@ -2,6 +2,7 @@ import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../../providers/search_provider.dart';
+import '../../providers/favorite_provider.dart';
 import '../../providers/video_player_provider.dart';
 import '../../providers/config_provider.dart';
 import '../../providers/resume_provider.dart';
@@ -13,7 +14,6 @@ import '../../core/theme/app_theme.dart';
 import '../../core/utils/toast_util.dart';
 import '../../core/constants/storage_keys.dart';
 import '../../data/services/storage_service.dart';
-import '../widgets/shimmer_loading.dart';
 import 'play_history_page.dart';
 
 class VideoListPage extends StatefulWidget {
@@ -49,6 +49,7 @@ class _VideoListPageState extends State<VideoListPage> {
   @override
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
+    final source = context.watch<VideoPlayerProvider>().videoList;
     return Scaffold(
       appBar: AppBar(
         title: SizedBox(
@@ -67,6 +68,7 @@ class _VideoListPageState extends State<VideoListPage> {
                       icon: Icon(Icons.close_rounded, color: colorScheme.onSurfaceVariant, size: 18),
                       onPressed: () {
                         _searchController.clear();
+                        context.read<SearchProvider>().clearFilter();
                         setState(() {});
                       },
                     ),
@@ -87,7 +89,7 @@ class _VideoListPageState extends State<VideoListPage> {
               ),
             ),
             onChanged: (_) => setState(() {}),
-            onSubmitted: (keyword) => context.read<SearchProvider>().search(keyword),
+            onSubmitted: (keyword) => context.read<SearchProvider>().search(source, keyword),
           ),
         ),
         actions: [
@@ -128,9 +130,9 @@ class _VideoListPageState extends State<VideoListPage> {
           ),
           PopupMenuButton<String>(
             icon: const Icon(Icons.filter_list_rounded),
-            onSelected: (blogger) => context.read<SearchProvider>().filterByBlogger(blogger),
+            onSelected: (blogger) => context.read<SearchProvider>().filterByBlogger(source, blogger),
             itemBuilder: (_) {
-              final groups = context.read<SearchProvider>().bloggerGroups;
+              final groups = context.read<SearchProvider>().bloggerGroups(source);
               return groups.keys.map((name) => PopupMenuItem(value: name, child: Text(name))).toList();
             },
           ),
@@ -138,13 +140,12 @@ class _VideoListPageState extends State<VideoListPage> {
       ),
       body: Consumer<SearchProvider>(
         builder: (context, sp, _) {
-          final videos = sp.results.isEmpty && sp.keyword.isEmpty
-            ? context.watch<VideoPlayerProvider>().videoList : sp.results;
+          final videos = sp.hasActiveFilter ? sp.results : source;
           if (videos.isEmpty) {
-            if (sp.keyword.isNotEmpty) {
+            if (sp.hasActiveFilter) {
               return _buildEmptyState('未找到匹配视频');
             }
-            return const ThumbnailShimmerPlaceholder();
+            return _buildEmptyState('暂无视频，请先在设置中选择视频目录');
           }
           final thumbnailEnabled = context.watch<ConfigProvider>().config.thumbnailLoadEnabled;
           return GridView.builder(
@@ -152,7 +153,7 @@ class _VideoListPageState extends State<VideoListPage> {
             gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
               crossAxisCount: _columnCount, crossAxisSpacing: 6, mainAxisSpacing: 6, childAspectRatio: 9 / 13),
             itemCount: videos.length,
-            itemBuilder: (context, index) => _buildVideoItem(videos[index], thumbnailEnabled),
+            itemBuilder: (context, index) => _buildVideoItem(videos, index, thumbnailEnabled),
           );
         },
       ),
@@ -172,12 +173,12 @@ class _VideoListPageState extends State<VideoListPage> {
     );
   }
 
-  Widget _buildVideoItem(VideoItem video, bool thumbnailEnabled) {
+  Widget _buildVideoItem(List<VideoItem> videos, int position, bool thumbnailEnabled) {
+    final video = videos[position];
     final colorScheme = Theme.of(context).colorScheme;
     return GestureDetector(
       onTap: () {
-        final vp = context.read<VideoPlayerProvider>();
-        vp.setDisplayList(context.read<SearchProvider>().results, startIndex: video.index);
+        context.read<VideoPlayerProvider>().setDisplayList(videos, startIndex: position);
         Navigator.pop(context);
       },
       onLongPress: () => _showDeleteConfirm(context, video),
@@ -276,10 +277,11 @@ class _VideoListPageState extends State<VideoListPage> {
               await videoRepo.deleteVideo(video.path);
               if (context.mounted) {
                 ToastUtil.show(context, '已删除 ${video.fileName}');
-                // 刷新列表
+                // 刷新列表：保持当前所处的模式，仅移除这一项
                 final vp = context.read<VideoPlayerProvider>();
-                final updatedList = vp.videoList.where((v) => v.path != video.path).toList();
-                vp.setVideoList(updatedList);
+                vp.removeVideoEverywhere(video.path);
+                context.read<SearchProvider>().reapply(vp.videoList);
+                await context.read<FavoriteProvider>().removeFavorite(video.path);
               }
             },
             child: Text('删除', style: TextStyle(color: Theme.of(ctx).colorScheme.error)),
