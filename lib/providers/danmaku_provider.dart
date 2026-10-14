@@ -2,7 +2,9 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:math';
 import 'package:flutter/material.dart';
+import 'package:path/path.dart' as p;
 import '../data/models/danmaku_word_lib.dart';
+import '../data/models/xml_danmaku.dart';
 import '../core/constants/bullet_constants.dart';
 import '../core/constants/storage_keys.dart';
 import '../data/services/storage_service.dart';
@@ -120,10 +122,92 @@ class DanmakuProvider extends ChangeNotifier {
   DanmakuConfig _config = const DanmakuConfig();
   bool _loaded = false;
 
+  List<XmlDanmaku> _timeline = const [];
+  int _timelineCursor = 0;
+  double _timelineLastSec = -1;
+  String? _timelineSource;
+
   DanmakuWordLib get wordLib => _wordLib;
   bool get isEnabled => _isEnabled;
   List<DanmakuItem> get activeBullets => List.unmodifiable(_activeBullets);
   DanmakuConfig get config => _config;
+
+  /// 当前时间轴弹幕来源（文件名），未加载时为 null
+  String? get timelineSource => _timelineSource;
+  int get timelineCount => _timeline.length;
+
+  /// 加载按视频时间轴排布的弹幕，[sourcePath] 为弹幕文件路径
+  void loadTimeline(List<XmlDanmaku> danmakus, {required String sourcePath}) {
+    _timeline = List.unmodifiable(danmakus);
+    _timelineSource = p.basename(sourcePath);
+    _timelineCursor = 0;
+    _timelineLastSec = -1;
+    notifyListeners();
+  }
+
+  void clearTimeline() {
+    if (_timeline.isEmpty && _timelineSource == null) return;
+    _timeline = const [];
+    _timelineSource = null;
+    _timelineCursor = 0;
+    _timelineLastSec = -1;
+    notifyListeners();
+  }
+
+  /// 由播放器进度驱动：到达时间点的弹幕进入显示队列，跳过的不补发。
+  /// 播放中关闭弹幕时仍然推进游标，避免重新开启时瞬间倾泻历史弹幕。
+  void syncTimeline(double seconds) {
+    if (_timeline.isEmpty) return;
+    if (seconds < _timelineLastSec - 1.5) {
+      _activeBullets.clear();
+      _timelineCursor = _lowerBound(seconds);
+    }
+    _timelineLastSec = seconds;
+
+    while (_timelineCursor < _timeline.length &&
+        _timeline[_timelineCursor].timeSec <= seconds) {
+      final item = _timeline[_timelineCursor++];
+      if (!isEnabled) continue;
+      if (seconds - item.timeSec > BulletConstants.speed) continue;
+      if (_isBlocked(item.text)) continue;
+      _activeBullets.add(_fromXml(item));
+      _needsNotify = true;
+    }
+  }
+
+  int _lowerBound(double seconds) {
+    var low = 0;
+    var high = _timeline.length;
+    while (low < high) {
+      final mid = (low + high) ~/ 2;
+      if (_timeline[mid].timeSec < seconds) {
+        low = mid + 1;
+      } else {
+        high = mid;
+      }
+    }
+    return low;
+  }
+
+  DanmakuItem _fromXml(XmlDanmaku item) {
+    // 固定弹幕只在顶部/底部的少数几行内取行，否则按全局位置取行
+    final rows = item.mode == XmlDanmakuMode.scroll
+        ? _config.rows
+        : min(3, _config.rows);
+    return DanmakuItem(
+      text: item.text,
+      row: _random.nextInt(rows),
+      startTime: DateTime.now(),
+      position: switch (item.mode) {
+        XmlDanmakuMode.scroll => DanmakuPosition.scroll,
+        XmlDanmakuMode.top => DanmakuPosition.top,
+        XmlDanmakuMode.bottom => DanmakuPosition.bottom,
+      },
+      colorValue: item.colorValue,
+      fontSize: item.fontSize.clamp(12.0, 40.0),
+      opacity: _config.opacityValue,
+    );
+  }
 
   Future<void> load() async {
     if (_loaded) return;
@@ -213,16 +297,8 @@ class DanmakuProvider extends ChangeNotifier {
   }
 
   void _generateBullet() {
-    var text = _generateRandomSentence();
-    // 屏蔽词过滤
-    for (final word in _config.blocklist) {
-      if (word.isEmpty) continue;
-      if (text.contains(word)) {
-        text = ''; // 整条丢弃
-        break;
-      }
-    }
-    if (text.isEmpty) return;
+    final text = _generateRandomSentence();
+    if (text.isEmpty || _isBlocked(text)) return;
     final row = _random.nextInt(_config.rows);
     final bullet = DanmakuItem(
       text: text,
@@ -253,6 +329,13 @@ class DanmakuProvider extends ChangeNotifier {
     result = result.replaceAll('{后缀}', _randomFrom(_wordLib.suffixes));
     result = result.replaceAll('{主}', _randomFrom(_wordLib.subjects));
     return result;
+  }
+
+  bool _isBlocked(String text) {
+    for (final word in _config.blocklist) {
+      if (word.isNotEmpty && text.contains(word)) return true;
+    }
+    return false;
   }
 
   String _randomFrom(List<String> list) {

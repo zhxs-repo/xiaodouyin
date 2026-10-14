@@ -2,8 +2,8 @@ class AppConstants {
   static const String appName = '小抖音';
   
   // API
-  static const String videoApiBaseUrl = 'https://api.mmp.cc/api/ksvideo';
-  static const String imageApiBaseUrl = 'https://api.mmp.cc/api/kswallpaper';
+  static const String videoApiBaseUrl = 'https://api.qzqi.com/api/v1/Randclip';
+  static const String imageApiBaseUrl = 'https://api.qzqi.com/api/v1/WallpaperLink';
   
   // 视频格式
   static const List<String> videoExtensions = ['.mp4', '.avi', '.mkv', '.flv', '.wmv'];
@@ -17,7 +17,7 @@ class AppConstants {
   static const String imageThumbDirName = '缓存/图片缩略图';
   static const String dataDirName = '小抖音/数据';
   
-  // 在线视频分类 (15类，YuZu已下线)
+  // 在线视频分类 (16类，与 Randclip 的 valid_ids 一致)
   static const List<Map<String, dynamic>> videoCategories = [
     {'id': 'jk', 'name': 'JK'},
     {'id': 'YuMeng', 'name': '欲梦'},
@@ -25,7 +25,9 @@ class AppConstants {
     {'id': 'NvGao', 'name': '女高'},
     {'id': 'ReWu', 'name': '热舞'},
     {'id': 'QingCun', 'name': '清纯'},
+    {'id': 'YuZu', 'name': '玉足'},
     {'id': 'SheJie', 'name': '蛇姐'},
+    {'id': 'BaiSi', 'name': '白丝'},
     {'id': 'ChuanDa', 'name': '穿搭'},
     {'id': 'GaoZhiLiangXiaoJieJie', 'name': '高质量小姐姐'},
     {'id': 'HanFu', 'name': '汉服'},
@@ -33,22 +35,15 @@ class AppConstants {
     {'id': 'BianZhuang', 'name': '变装'},
     {'id': 'LuoLi', 'name': '萝莉'},
     {'id': 'TianMei', 'name': '甜美'},
-    {'id': 'BaiSi', 'name': '白丝'},
   ];
   
-  // 在线图片分类 (11类，复用4个API分类id)
+  // 在线图片分类 (5类，与 WallpaperLink 的 category 可选值一致)
   static const List<Map<String, dynamic>> imageCategories = [
-    {'id': 'kuaishou', 'name': '快手网红'},
-    {'id': 'taobao', 'name': '淘宝买家秀'},
-    {'id': 'meizi', 'name': '随机妹子'},
+    {'id': 'kuaishou', 'name': '快手'},
+    {'id': 'taobao', 'name': '淘宝'},
+    {'id': 'meitui', 'name': '美腿'},
     {'id': 'cos', 'name': 'Cosplay'},
-    {'id': 'meizi', 'name': '丝袜妹子'},
-    {'id': 'cos', 'name': '精品Cos'},
-    {'id': 'kuaishou', 'name': '网红壁纸'},
-    {'id': 'taobao', 'name': '穿搭买家秀'},
-    {'id': 'meizi', 'name': '高清妹子'},
-    {'id': 'kuaishou', 'name': '快手壁纸'},
-    {'id': 'cos', 'name': '动漫Cos'},
+    {'id': 'meizi', 'name': '妹子'},
   ];
   
   // 倍速选项 (0.25x - 5x)

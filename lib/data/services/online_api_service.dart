@@ -13,33 +13,67 @@ class OnlineApiService {
     validateStatus: (status) => status != null && status < 500,
   ));
 
-  Future<String> fetchVideoUrl(String categoryId) async {
-    final ts = DateTime.now().millisecondsSinceEpoch;
-    try {
-      final response = await _dio.get(
+  Future<String> fetchVideoUrl(String categoryId) => _fetchMediaUrl(
         AppConstants.videoApiBaseUrl,
-        queryParameters: {'type': 'json', 'id': categoryId, 't': ts},
+        {'id': categoryId},
+        '视频',
       );
-      if (response.statusCode == 400) {
-        throw Exception('请求参数错误(400)，请检查分类ID是否有效');
-      }
-      return _parseMediaUrl(response.data);
-    } on DioException catch (e) {
-      throw Exception(_handleDioError(e));
+
+  Future<String> fetchImageUrl(String categoryId) => _fetchMediaUrl(
+        AppConstants.imageApiBaseUrl,
+        {'category': categoryId},
+        '图片',
+      );
+
+  /// 取一条真正能访问的图片链接。上游会偶发返回已失效的CDN链接(404)，
+  /// 这里用HEAD预校验，最多重试3次，避免坏链接进入列表。
+  Future<String> fetchAliveImageUrl(String categoryId) async {
+    for (int attempt = 0; attempt < 3; attempt++) {
+      final url = await fetchImageUrl(categoryId);
+      if (await isMediaUrlAlive(url)) return url;
+    }
+    throw Exception('图片链接暂时不可用，请稍后重试');
+  }
+
+  Future<bool> isMediaUrlAlive(String url) async {
+    try {
+      final response = await _dio.head(
+        url,
+        options: Options(
+          responseType: ResponseType.bytes,
+          sendTimeout: const Duration(seconds: 6),
+          receiveTimeout: const Duration(seconds: 6),
+        ),
+      );
+      final statusCode = response.statusCode ?? 0;
+      return statusCode >= 200 && statusCode < 400;
+    } catch (_) {
+      return false;
     }
   }
 
-  Future<String> fetchImageUrl(String categoryId) async {
-    final ts = DateTime.now().millisecondsSinceEpoch;
+  Future<String> _fetchMediaUrl(
+    String baseUrl,
+    Map<String, dynamic> params,
+    String kindLabel,
+  ) async {
+    final query = {...params, 'type': 'json', 't': DateTime.now().millisecondsSinceEpoch};
     try {
-      final response = await _dio.get(
-        AppConstants.imageApiBaseUrl,
-        queryParameters: {'category': categoryId, 'type': 'json', 't': ts},
-      );
+      final response = await _dio.get(baseUrl, queryParameters: query);
       if (response.statusCode == 400) {
         throw Exception('请求参数错误(400)，请检查分类ID是否有效');
       }
-      return _parseMediaUrl(response.data);
+      final data = response.data;
+      if (data is Map) {
+        final code = data['code']?.toString();
+        if (code != null && code != '1' && code != '200') {
+          throw Exception(data['msg']?.toString() ?? '接口返回失败(code=$code)');
+        }
+        final url = _extractUrl(data);
+        if (url.isNotEmpty) return url;
+      }
+      if (data is String && data.trim().isNotEmpty) return data.trim();
+      throw Exception('未获取到 $kindLabel 链接');
     } on DioException catch (e) {
       throw Exception(_handleDioError(e));
     }
@@ -83,14 +117,20 @@ class OnlineApiService {
         .toList();
   }
 
-  String _parseMediaUrl(dynamic data) {
-    if (data is String) return data;
-    if (data is Map) {
-      return data['link']?.toString() ??
-             data['url']?.toString() ??
-             data['data']?.toString() ??
-             data['video_url']?.toString() ?? '';
+  String _extractUrl(Map data) {
+    final inner = data['data'];
+    final candidates = <dynamic>[
+      if (inner is Map) inner['link'],
+      data['link'],
+      data['url'],
+      data['video_url'],
+      if (inner is String) inner,
+      if (inner is Map) inner['url'],
+    ];
+    for (final candidate in candidates) {
+      final value = candidate?.toString().trim() ?? '';
+      if (value.startsWith('http')) return value;
     }
-    return data.toString();
+    return '';
   }
 }

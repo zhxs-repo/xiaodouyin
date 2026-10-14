@@ -50,6 +50,9 @@ dependencies:
   # 文件操作
   file_picker: ^8.1.4
 
+  # 弹幕文件解析
+  xml: ^6.6.1
+
   # 网络请求
   dio: ^5.7.0
 

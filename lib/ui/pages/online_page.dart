@@ -1,11 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
-import 'package:cached_network_image/cached_network_image.dart';
-import 'package:media_kit/media_kit.dart';
-import 'package:media_kit_video/media_kit_video.dart';
 import '../../providers/online_provider.dart';
 import '../../data/models/online_category.dart';
+import 'online_image_swipe_page.dart';
 import 'online_video_swipe_page.dart';
 
 class OnlinePage extends StatefulWidget {
@@ -104,9 +102,9 @@ class _OnlinePageState extends State<OnlinePage> {
       Navigator.push(context, MaterialPageRoute(
         builder: (_) => OnlineVideoSwipePage(categoryName: category.name)));
     } else {
-      provider.fetchImage(category.id);
+      provider.initImageSwipeList(category.id);
       Navigator.push(context, MaterialPageRoute(
-        builder: (_) => _OnlineContentPage(category: category)));
+        builder: (_) => OnlineImageSwipePage(categoryName: category.name)));
     }
   }
 
@@ -235,86 +233,6 @@ class _StreamingDialogState extends State<_StreamingDialog> {
           onPressed: _submit,
         ),
       ],
-    );
-  }
-}
-
-class _OnlineContentPage extends StatefulWidget {
-  final OnlineCategory category;
-  const _OnlineContentPage({required this.category});
-
-  @override
-  State<_OnlineContentPage> createState() => _OnlineContentPageState();
-}
-
-class _OnlineContentPageState extends State<_OnlineContentPage> {
-  Player? _player;
-  VideoController? _controller;
-  String? _currentUrl;
-
-  @override
-  void dispose() {
-    _player?.dispose();
-    super.dispose();
-  }
-
-  void _initPlayer(String url) {
-    // URL变化时重新初始化播放器
-    if (_player != null && _currentUrl == url) return;
-    _player?.dispose();
-    _player = Player(configuration: const PlayerConfiguration());
-    _controller = VideoController(_player!);
-    _player!.open(Media(url));
-    _currentUrl = url;
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final colorScheme = Theme.of(context).colorScheme;
-    return Scaffold(
-      appBar: AppBar(title: Text(widget.category.name)),
-      body: Consumer<OnlineProvider>(
-        builder: (context, op, _) {
-          if (op.isLoading) {
-            return const Center(child: CircularProgressIndicator());
-          }
-          if (op.error != null) {
-            return Center(child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                Text(op.error!, style: TextStyle(color: colorScheme.error)),
-                const SizedBox(height: 16),
-                ElevatedButton(onPressed: () {
-                  if (widget.category.type == CategoryType.video) {
-                    op.fetchVideo(widget.category.id);
-                  } else {
-                    op.fetchImage(widget.category.id);
-                  }
-                }, child: const Text('重试')),
-              ],
-            ));
-          }
-          final url = widget.category.type == CategoryType.video ? op.currentVideoUrl : op.currentImageUrl;
-          if (url == null || url.isEmpty) return const SizedBox();
-          if (widget.category.type == CategoryType.video) {
-            _initPlayer(url);
-            return Center(
-              child: AspectRatio(
-                aspectRatio: 9 / 16,
-                child: _controller != null
-                  ? Video(controller: _controller!, controls: NoVideoControls)
-                  : Center(child: CircularProgressIndicator(color: colorScheme.primary)),
-              ),
-            );
-          }
-          return Center(
-            child: CachedNetworkImage(imageUrl: url, fit: BoxFit.contain,
-              memCacheWidth: 1080,
-              placeholder: (_, _) => Center(child: CircularProgressIndicator(color: colorScheme.primary)),
-              errorWidget: (_, _, _) => Icon(Icons.broken_image, size: 100, color: colorScheme.onSurfaceVariant)),
-          );
-        },
-      ),
     );
   }
 }

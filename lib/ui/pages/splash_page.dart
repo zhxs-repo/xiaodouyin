@@ -15,6 +15,7 @@ import 'video_player_page.dart';
 import 'long_video_player_page.dart';
 import 'beauty_page.dart';
 import 'online_page.dart';
+import 'folder_home_page.dart';
 import 'settings_page.dart';
 
 class SplashPage extends StatefulWidget {
@@ -248,6 +249,19 @@ class _SplashPageState extends State<SplashPage> with TickerProviderStateMixin {
                               onTap: () => _enterMode(
                                 'online',
                                 config.onlineModePassword,
+                              ),
+                            ),
+                            const SizedBox(height: 14),
+                            _ModeCard(
+                              icon: Icons.folder_open_outlined,
+                              title: '文件夹',
+                              subtitle: '按目录浏览 / 剧集连播',
+                              color: colorScheme.tertiary,
+                              onTap: () => Navigator.push(
+                                context,
+                                MaterialPageRoute(
+                                  builder: (_) => const FolderHomePage(),
+                                ),
                               ),
                             ),
                           ],

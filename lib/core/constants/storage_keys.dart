@@ -22,6 +22,7 @@ class StorageKeys {
   static const String timerState = 'timerState';
   static const String videoColumnCount = 'videoColumnCount';
   static const String beautyColumnCount = 'beautyColumnCount';
+  static const String folderColumnCount = 'folderColumnCount';
   static const String textEffectType = 'textEffectType';
 
   // 弹幕配置

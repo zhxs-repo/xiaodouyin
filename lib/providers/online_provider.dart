@@ -2,6 +2,7 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:dio/dio.dart';
 import 'package:path/path.dart' as p;
+import '../core/constants/app_constants.dart';
 import '../core/utils/path_utils.dart';
 import '../data/services/online_api_service.dart';
 import '../data/models/online_category.dart';
@@ -10,8 +11,6 @@ class OnlineProvider extends ChangeNotifier {
   final OnlineApiService _apiService;
   List<OnlineCategory> _videoCategories = [];
   List<OnlineCategory> _imageCategories = [];
-  String? _currentVideoUrl;
-  String? _currentImageUrl;
   bool _isLoading = false;
   String? _error;
 
@@ -24,6 +23,14 @@ class OnlineProvider extends ChangeNotifier {
   String? _streamingTitle;
   static const int _preloadCount = 3;
 
+  // 图片水平滑动列表
+  final List<String> _imageUrlList = [];
+  String? _currentImageCategoryId;
+  bool _isLoadingMoreImages = false;
+  static const int _imageInitialCount = 6;
+  static const int _imageKeepAhead = 2;
+  static const int _imageFetchBatch = 3;
+
   // 会话列表：记录当前会话浏览过的视频URL
   final List<SessionItem> _sessionItems = [];
 
@@ -31,15 +38,15 @@ class OnlineProvider extends ChangeNotifier {
 
   List<OnlineCategory> get videoCategories => _videoCategories;
   List<OnlineCategory> get imageCategories => _imageCategories;
-  String? get currentVideoUrl => _currentVideoUrl;
-  String? get currentImageUrl => _currentImageUrl;
   bool get isLoading => _isLoading;
   String? get error => _error;
   List<String> get videoUrlList => _videoUrlList;
   int get currentVideoIndex => _currentVideoIndex;
   String? get currentCategoryId => _currentCategoryId;
+  String? get currentImageCategoryId => _currentImageCategoryId;
   bool get isStreaming => _isStreaming;
   String? get streamingTitle => _streamingTitle;
+  List<String> get imageUrlList => _imageUrlList;
   List<SessionItem> get sessionItems => List.unmodifiable(_sessionItems);
 
   void loadCategories() {
@@ -48,33 +55,6 @@ class OnlineProvider extends ChangeNotifier {
     notifyListeners();
   }
 
-  Future<void> fetchVideo(String categoryId) async {
-    _isLoading = true;
-    _error = null;
-    notifyListeners();
-    try {
-      _currentVideoUrl = await _apiService.fetchVideoUrl(categoryId);
-    } catch (e) {
-      _error = _extractErrorMessage(e);
-    } finally {
-      _isLoading = false;
-      notifyListeners();
-    }
-  }
-
-  Future<void> fetchImage(String categoryId) async {
-    _isLoading = true;
-    _error = null;
-    notifyListeners();
-    try {
-      _currentImageUrl = await _apiService.fetchImageUrl(categoryId);
-    } catch (e) {
-      _error = _extractErrorMessage(e);
-    } finally {
-      _isLoading = false;
-      notifyListeners();
-    }
-  }
 
   /// 初始化视频滑动列表，预加载若干条
   Future<void> initVideoSwipeList(String categoryId, {String categoryName = ''}) async {
@@ -149,6 +129,50 @@ class OnlineProvider extends ChangeNotifier {
     }
   }
 
+  /// 初始化图片水平滑动列表：先出第一张，其余在后台补齐
+  Future<void> initImageSwipeList(String categoryId) async {
+    _currentImageCategoryId = categoryId;
+    _imageUrlList.clear();
+    _error = null;
+    _isLoading = true;
+    notifyListeners();
+
+    try {
+      _imageUrlList.add(await _apiService.fetchAliveImageUrl(categoryId));
+    } catch (e) {
+      _error = _extractErrorMessage(e);
+      _isLoading = false;
+      notifyListeners();
+      return;
+    }
+    _isLoading = false;
+    notifyListeners();
+
+    _loadMoreImages(_imageInitialCount - _imageUrlList.length);
+  }
+
+  /// 滑到指定索引，接近末尾时自动补图
+  void onImagePageChanged(int index) {
+    if (index >= _imageUrlList.length - _imageKeepAhead) {
+      _loadMoreImages(_imageFetchBatch);
+    }
+  }
+
+  Future<void> _loadMoreImages(int count) async {
+    final categoryId = _currentImageCategoryId;
+    if (categoryId == null || _isLoadingMoreImages || count <= 0) return;
+    _isLoadingMoreImages = true;
+    for (int i = 0; i < count; i++) {
+      try {
+        _imageUrlList.add(await _apiService.fetchAliveImageUrl(categoryId));
+        notifyListeners();
+      } catch (e) {
+        break;
+      }
+    }
+    _isLoadingMoreImages = false;
+  }
+
   String _extractErrorMessage(dynamic e) {
     final msg = e.toString();
     if (msg.startsWith('Exception: ')) {
@@ -176,13 +200,22 @@ class OnlineProvider extends ChangeNotifier {
     try {
       final dir = await _getDownloadDir();
       final timestamp = DateTime.now().millisecondsSinceEpoch;
-      final fileName = '${categoryName}_$timestamp.jpg';
+      final fileName = '${categoryName}_$timestamp.${_imageExtension(url)}';
       final savePath = p.join(dir.path, fileName);
       await Dio().download(url, savePath);
       return savePath;
     } catch (e) {
       return null;
     }
+  }
+
+  /// 从图片URL取真实扩展名，取不到则回落 jpg
+  String _imageExtension(String url) {
+    final path = Uri.tryParse(url)?.path ?? '';
+    final dot = path.lastIndexOf('.');
+    if (dot < 0) return 'jpg';
+    final ext = path.substring(dot + 1).toLowerCase();
+    return AppConstants.imageExtensions.contains('.$ext') ? ext : 'jpg';
   }
 
   Future<Directory> _getDownloadDir() async {

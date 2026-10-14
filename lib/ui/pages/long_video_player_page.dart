@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import 'package:file_picker/file_picker.dart';
 import 'package:media_kit/media_kit.dart';
 import 'package:media_kit_video/media_kit_video.dart';
 import 'package:path/path.dart' as p;
@@ -17,12 +18,16 @@ import '../../data/models/video_item.dart';
 import '../../data/repositories/favorite_repository.dart';
 import '../../data/repositories/play_history_repository.dart';
 import '../../data/repositories/video_repository.dart';
+import '../../data/services/danmaku_xml_parser.dart';
 import '../../data/services/file_service.dart';
 import '../../data/services/storage_service.dart';
 import '../../providers/config_provider.dart';
+import '../../providers/danmaku_provider.dart';
 import '../../providers/favorite_provider.dart';
 import '../../providers/resume_provider.dart';
 import '../gestures/desktop_shortcuts.dart';
+import '../widgets/danmaku_overlay.dart';
+import '../widgets/danmaku_settings_sheet.dart';
 import '../widgets/modern_progress_bar.dart' as modern;
 
 /// 长视频模式：单个 mpv 实例 + mpv 原生播放列表。
@@ -30,7 +35,17 @@ import '../widgets/modern_progress_bar.dart' as modern;
 /// 与短视频模式的 LRU 多播放器池不同，这里只有一个 [Player]，切集由 mpv 的
 /// playlist 完成，收藏/播放历史/续播使用独立存储键，与短视频数据互不干扰。
 class LongVideoPlayerPage extends StatefulWidget {
-  const LongVideoPlayerPage({super.key});
+  const LongVideoPlayerPage({
+    super.key,
+    this.initialVideos,
+    this.initialIndex,
+  });
+
+  /// 外部指定播放列表（如从文件夹进入），不传则扫描视频根目录
+  final List<VideoItem>? initialVideos;
+
+  /// 配合 [initialVideos] 使用的起始集
+  final int? initialIndex;
 
   @override
   State<LongVideoPlayerPage> createState() => _LongVideoPlayerPageState();
@@ -56,6 +71,7 @@ class _LongVideoPlayerPageState extends State<LongVideoPlayerPage>
   FavoriteProvider? _favorites;
   ResumeProvider? _resume;
   late final ConfigProvider _config;
+  late final DanmakuProvider _danmaku;
 
   List<VideoItem> _videos = const [];
   int _index = 0;
@@ -105,6 +121,7 @@ class _LongVideoPlayerPageState extends State<LongVideoPlayerPage>
     }
     // dispose() 时 element 已 defunct，那里不能再 context.read，先存下实例
     _config = context.read<ConfigProvider>();
+    _danmaku = context.read<DanmakuProvider>();
     _config.addListener(_onConfigChanged);
     _init();
   }
@@ -139,6 +156,7 @@ class _LongVideoPlayerPageState extends State<LongVideoPlayerPage>
     _resume?.stopAutoSave();
     _resume?.dispose();
     _favorites?.dispose();
+    _danmaku.clearTimeline();
     _player.dispose();
     super.dispose();
   }
@@ -172,16 +190,20 @@ class _LongVideoPlayerPageState extends State<LongVideoPlayerPage>
 
   Future<void> _loadVideos() async {
     final config = _config.config;
-    final videos = await VideoRepository(
-      FileService(customVideoDir: config.customVideoDir),
-    ).loadVideos();
+    final videos = widget.initialVideos ??
+        await VideoRepository(
+          FileService(customVideoDir: config.customVideoDir),
+        ).loadVideos();
     if (!mounted) return;
     setState(() {
       _videos = videos;
       _loading = false;
     });
     if (videos.isEmpty) return;
-    await _openPlaylist(_resolveStartIndex(videos));
+    final startIndex = widget.initialIndex;
+    await _openPlaylist(startIndex == null
+        ? _resolveStartIndex(videos)
+        : startIndex.clamp(0, videos.length - 1));
   }
 
   /// 从长视频播放历史里挑最近看过的一集作为起始，没有记录则从第一集开始
@@ -210,7 +232,7 @@ class _LongVideoPlayerPageState extends State<LongVideoPlayerPage>
     setState(() => _index = startIndex);
     await _applyPlaylistMode();
     _trackCurrentVideo(startIndex);
-    _loadSubtitles(_videos[startIndex].path);
+    _loadEpisodeFiles(_videos[startIndex].path);
     final position = _resume?.getResumePosition(_videos[startIndex].path);
     if (position != null && position.inSeconds > 0) {
       _seekAfterStart(position);
@@ -275,7 +297,7 @@ class _LongVideoPlayerPageState extends State<LongVideoPlayerPage>
         return;
       }
       _trackCurrentVideo(index);
-      _loadSubtitles(_videos[index].path);
+      _loadEpisodeFiles(_videos[index].path);
       setState(() => _index = index);
     });
     _errorSub = _player.stream.error.listen((message) {
@@ -283,9 +305,10 @@ class _LongVideoPlayerPageState extends State<LongVideoPlayerPage>
       setState(() => _error = message.isNotEmpty);
       if (message.isNotEmpty) debugPrint('长视频播放失败: $message');
     });
-    _positionSub = _player.stream.position.listen(
-      (position) => _livePosition = position,
-    );
+    _positionSub = _player.stream.position.listen((position) {
+      _livePosition = position;
+      _danmaku.syncTimeline(position.inMilliseconds / 1000.0);
+    });
     _durationSub = _player.stream.duration.listen(
       (duration) => _liveDuration = duration,
     );
@@ -317,6 +340,45 @@ class _LongVideoPlayerPageState extends State<LongVideoPlayerPage>
     final mode = _player.state.playlistMode;
     if (mode == PlaylistMode.loop || mode == PlaylistMode.single) return false;
     return _index >= _videos.length - 1;
+  }
+
+  /// 换集时一并加载外挂字幕和同名弹幕文件
+  void _loadEpisodeFiles(String videoPath) {
+    _loadSubtitles(videoPath);
+    _loadDanmakuFor(videoPath);
+  }
+
+  /// 自动加载与视频同名的 .xml 弹幕，没有则卸载上一集的弹幕
+  Future<void> _loadDanmakuFor(String videoPath) async {
+    final xmlPath = DanmakuXmlParser.xmlPathFor(videoPath);
+    final danmakus = await DanmakuXmlParser.loadFile(xmlPath);
+    if (!mounted) return;
+    if (danmakus.isEmpty) {
+      _danmaku.clearTimeline();
+    } else {
+      _danmaku.loadTimeline(danmakus, sourcePath: xmlPath);
+    }
+  }
+
+  Future<void> _pickDanmakuFile() async {
+    final result = await FilePicker.platform.pickFiles(
+      type: FileType.custom,
+      allowedExtensions: ['xml'],
+      dialogTitle: '选择弹幕文件',
+    );
+    final path = result == null || result.files.isEmpty
+        ? null
+        : result.files.first.path;
+    if (path == null) return;
+
+    final danmakus = await DanmakuXmlParser.loadFile(path);
+    if (!mounted) return;
+    if (danmakus.isEmpty) {
+      _showToast('该文件未解析到弹幕');
+      return;
+    }
+    _danmaku.loadTimeline(danmakus, sourcePath: path);
+    _showToast('已加载 ${danmakus.length} 条弹幕');
   }
 
   /// 加载字幕：同目录同名字幕优先，其次内封默认轨道
@@ -362,7 +424,7 @@ class _LongVideoPlayerPageState extends State<LongVideoPlayerPage>
     if (!mounted) return;
     setState(() => _index = index);
     _trackCurrentVideo(index);
-    _loadSubtitles(_videos[index].path);
+    _loadEpisodeFiles(_videos[index].path);
   }
 
   void _togglePlayPause() {
@@ -617,6 +679,7 @@ class _LongVideoPlayerPageState extends State<LongVideoPlayerPage>
               ),
             ),
             if (_error) _buildErrorLayer(),
+            const IgnorePointer(child: DanmakuOverlay()),
             if (!_isPlaying)
               Center(
                 child: Icon(
@@ -666,7 +729,7 @@ class _LongVideoPlayerPageState extends State<LongVideoPlayerPage>
                   setState(() => _error = false);
                   // 用 jump 重载当前集，open(Media) 会把整个播放列表丢掉
                   _player.jump(_index);
-                  _loadSubtitles(_videos[_index].path);
+                  _loadEpisodeFiles(_videos[_index].path);
                 },
                 icon: const Icon(Icons.refresh, size: 18, color: Colors.white),
                 label: const Text('重试', style: TextStyle(color: Colors.white)),
@@ -687,6 +750,18 @@ class _LongVideoPlayerPageState extends State<LongVideoPlayerPage>
       child: child,
     ),
   );
+
+  void _showDanmakuSettings() {
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: Theme.of(context).colorScheme.surfaceContainerHigh,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      isScrollControlled: true,
+      builder: (_) => DanmakuSettingsSheet(onPickFile: _pickDanmakuFile),
+    );
+  }
 
   Widget _buildTopBar(VideoItem current, double opacity) {
     return PositionedDirectional(
@@ -869,6 +944,18 @@ class _LongVideoPlayerPageState extends State<LongVideoPlayerPage>
                         ),
                       ),
                       const SizedBox(width: 8),
+                      Consumer<DanmakuProvider>(
+                        builder: (context, dp, _) => IconButton(
+                          onPressed: _showDanmakuSettings,
+                          icon: Icon(
+                            Icons.subtitles_rounded,
+                            color: dp.isEnabled
+                                ? AppTheme.primaryColor
+                                : Colors.white,
+                          ),
+                          tooltip: '弹幕',
+                        ),
+                      ),
                       IconButton(
                         onPressed: () {
                           setState(() {

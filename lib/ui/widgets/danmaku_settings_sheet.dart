@@ -5,7 +5,10 @@ import '../../core/theme/app_theme.dart';
 
 /// 弹幕设置底部弹窗
 class DanmakuSettingsSheet extends StatefulWidget {
-  const DanmakuSettingsSheet({super.key});
+  const DanmakuSettingsSheet({super.key, this.onPickFile});
+
+  /// 传入后显示"视频弹幕文件"区块，由调用方负责挑选并加载 XML
+  final Future<void> Function()? onPickFile;
 
   @override
   State<DanmakuSettingsSheet> createState() => _DanmakuSettingsSheetState();
@@ -70,6 +73,34 @@ class _DanmakuSettingsSheetState extends State<DanmakuSettingsSheet> {
                   ],
                 ),
                 const SizedBox(height: 20),
+                if (widget.onPickFile != null) ...[
+                  _SectionLabel('视频弹幕文件'),
+                  const SizedBox(height: 4),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: Text(
+                          dp.timelineSource == null
+                              ? '未加载，同名 .xml 会自动读取'
+                              : '${dp.timelineSource} · ${dp.timelineCount} 条',
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: Theme.of(context).textTheme.bodyMedium,
+                        ),
+                      ),
+                      TextButton(
+                        onPressed: widget.onPickFile,
+                        child: const Text('选择'),
+                      ),
+                      if (dp.timelineCount > 0)
+                        TextButton(
+                          onPressed: dp.clearTimeline,
+                          child: const Text('清除'),
+                        ),
+                    ],
+                  ),
+                  const SizedBox(height: 16),
+                ],
                 _SectionLabel('颜色'),
                 const SizedBox(height: 8),
                 Wrap(

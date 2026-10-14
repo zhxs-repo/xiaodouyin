@@ -6,11 +6,15 @@ import '../../core/utils/path_utils.dart';
 
 class ThumbnailService {
   static const int maxConcurrency = 5;
+  // video_thumbnail 只提供 android/ios 实现，桌面端调用必抛 MissingPluginException
+  static bool get isSupported =>
+      Platform.isAndroid || Platform.isIOS;
   final Map<String, Uint8List> _memoryCache = {};
   static const int maxMemoryCacheSize = 100 * 1024 * 1024; // 100MB
   int _currentCacheSize = 0;
 
   Future<Uint8List?> getThumbnail(String videoPath) async {
+    if (!isSupported) return null;
     final safeName = PathUtils.getSafeThumbnailName(videoPath);
     
     // 1. 内存缓存
@@ -32,6 +36,7 @@ class ThumbnailService {
   }
 
   Future<void> generateBatch(List<String> videoPaths) async {
+    if (!isSupported) return;
     final batches = <List<String>>[];
     for (var i = 0; i < videoPaths.length; i += maxConcurrency) {
       batches.add(videoPaths.sublist(
